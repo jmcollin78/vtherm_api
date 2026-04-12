@@ -25,7 +25,7 @@ dependencies = []
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3",
-    "ruff>=0.11.0",
+    "pytest-asyncio",
 ]
 
 [tool.setuptools]
@@ -37,6 +37,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
-[tool.ruff]
-target-version = "py314"
-line-length = 100
+[tool.black]
+# Work !
+line-length = 180
