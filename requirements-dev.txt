@@ -1,2 +1,12 @@
-pytest>=8.3
-ruff>=0.11.0
+homeassistant==2026.3.1
+
+# Home Assistant frontend (required by the frontend component)
+home-assistant-frontend
+
+# Debugger support (used by the debugpy integration)
+debugpy
+aiodiscover
+ulid_transform
+pytest
+coverage
+pytest-asyncio
