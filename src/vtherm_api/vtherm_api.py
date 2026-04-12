@@ -1,9 +1,13 @@
 """ The API of Versatile Thermostat"""
 from datetime import datetime
 from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.helpers.entity_component import EntityComponent
+from homeassistant.components.climate import ClimateEntity, DOMAIN as CLIMATE_DOMAIN
 
-from .const import DOMAIN, VTHERM_API_NAME
+from .const import DOMAIN, VTHERM_API_NAME, CONF_NAME, NowClass
 from .log_collector import get_vtherm_logger
+from .plugin_climate import PluginClimate
 
 _LOGGER = get_vtherm_logger(__name__)
 
@@ -17,7 +21,6 @@ class VThermAPI:
 
     def __init__(self) -> None:
         """Initialize the VThermAPI instance."""
-        super().__init__()
         self._now: datetime = None
 
     @classmethod
@@ -53,6 +56,29 @@ class VThermAPI:
                 VTHERM_API_NAME, None)
         VThermAPI._hass = None
 
+    def add_entry(self, entry: ConfigEntry):
+        """Add a new entry"""
+        name = entry.data.get(CONF_NAME)
+        _LOGGER.debug("%s - Add the entry %s - %s", name, entry.entry_id, name)
+        # Add the entry in hass.data
+        VThermAPI._hass.data[DOMAIN][entry.entry_id] = entry
+
+    def remove_entry(self, entry: ConfigEntry):
+        """Remove an entry"""
+        name = entry.data.get(CONF_NAME)
+        _LOGGER.debug("%s - Remove the entry %s - %s",
+                      name, entry.entry_id, name)
+        VThermAPI._hass.data[DOMAIN].pop(entry.entry_id)
+        # If not more entries are preset, remove the API
+        if (len([
+            val
+            for val in VThermAPI._hass.data[DOMAIN].values()
+            if isinstance(val, ConfigEntry)
+        ]) == 0):
+            _LOGGER.debug("No more entries-> Remove the API from DOMAIN")
+            if DOMAIN in VThermAPI._hass.data:
+                VThermAPI._hass.data.pop(DOMAIN)
+
     @property
     def hass(self):
         """Get the HomeAssistant object"""
@@ -72,3 +98,23 @@ class VThermAPI:
     def now(self) -> datetime:
         """Get now. The local datetime or the overloaded _set_now date"""
         return self._now if self._now is not None else NowClass.get_now(self._hass)
+
+    def link_to_vtherm(self, vtherm, plugin_vtherm_entity_id: str):
+        """Link the VTherm API to a specific VTherm entity."""
+        # Implementation for linking to a VTherm entity
+        # Find a vtherm instance of type PluginClimate in hass
+        component: EntityComponent[ClimateEntity] = self._hass.data.get(
+            CLIMATE_DOMAIN, None)
+        if component:
+            for entity in list(component.entities):
+                try:
+                    if entity.device_info and entity.device_info.get("model", None) == DOMAIN:
+                        if plugin_vtherm_entity_id == entity.entity_id and entity.__class__.__name__ == "PluginClimate":
+                            plugin_climate: PluginClimate = entity
+                            _LOGGER.info(
+                                "%s - We have found the linked PluginVTherm", self)
+                            plugin_climate.link_to_vtherm(vtherm)
+                            return
+                except Exception as e:  # pylint: disable=broad-except
+                    _LOGGER.error(
+                        "Error searching/initializing entity %s: %s", entity.entity_id, e)
