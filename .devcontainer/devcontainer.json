@@ -1,7 +1,8 @@
 {
     "name": "vtherm_api",
     "image": "mcr.microsoft.com/devcontainers/python:3.14-bookworm",
-    "postCreateCommand": "python -m pip install --upgrade pip && python -m pip install -e .[dev]",
+    "postCreateCommand": "python -m pip install --upgrade pip && python -m pip install -r requirements-dev.txt",
+    "postStartCommand": "python -m pip install -r requirements-dev.txt",
     "remoteUser": "vscode",
     "customizations": {
         "vscode": {

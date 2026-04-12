@@ -20,13 +20,11 @@ The API of the Versatile Thermostat integration for Home Assistant.
 
 ## Local development
 
-Create a virtual environment with Python 3.14, then install the project in editable mode with development tools:
+Install the project in editable mode with development tools:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -e .[dev]
+python -m pip install -r requirements-dev.txt
 pytest
 ```
 
@@ -38,7 +36,13 @@ When the container is created, VS Code runs:
 
 ```bash
 python -m pip install --upgrade pip
-python -m pip install -e .[dev]
+python -m pip install -r requirements-dev.txt
+```
+
+At each container start, VS Code runs:
+
+```bash
+python -m pip install -r requirements-dev.txt
 ```
 
 To use it in VS Code:
