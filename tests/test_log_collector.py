@@ -22,6 +22,9 @@ from src.vtherm_api.log_collector import (
 )
 
 
+TEST_LOGGER_NAME = "src.vtherm_api.test_thermostat"
+
+
 # ---------------------------------------------------------------------------
 # Unit tests: _extract_thermostat_hint
 # ---------------------------------------------------------------------------
@@ -56,7 +59,7 @@ class TestVThermLogHandler:
 
     def _make_record(self, msg: str, level: int = logging.DEBUG, ts: float | None = None):
         record = logging.LogRecord(
-            name="custom_components.versatile_thermostat.base_thermostat",
+            name=TEST_LOGGER_NAME,
             level=level,
             pathname="",
             lineno=0,
@@ -236,7 +239,7 @@ class TestVThermLogger:
     def _unique_name(self, suffix: str) -> str:
         """Return a unique logger name to avoid cross-test pollution."""
         import uuid
-        return f"custom_components.versatile_thermostat._test_{suffix}_{uuid.uuid4().hex[:8]}"
+        return f"src.vtherm_api._test_{suffix}_{uuid.uuid4().hex[:8]}"
 
     def test_get_vtherm_logger_returns_vtherm_instance(self):
         """get_vtherm_logger must return a VThermLogger, not a plain Logger."""
@@ -277,14 +280,14 @@ class TestVThermLogger:
 
     def test_normal_handlers_respect_effective_level(self):
         """Normal handlers (not the collector) must NOT receive records below the effective level."""
-        handler = VThermLogHandler()
+        VThermLogHandler()
         name = self._unique_name("ha_level")
         logger = get_vtherm_logger(name)
         logger.setLevel(logging.WARNING)
         logger.propagate = False  # isolate from root
 
         # Attach a spy handler to verify what it receives
-        spy = logging.handlers_spy = []
+        spy: list[int] = []
 
         class SpyHandler(logging.Handler):
             def emit(self, record):
@@ -304,20 +307,20 @@ class TestVThermLogger:
 
     def test_collector_not_registered_before_handler_creation(self):
         """VThermLogger._collector is None until a VThermLogHandler is instantiated."""
-        original = VThermLogger._collector
-        VThermLogger._collector = None
+        original = getattr(VThermLogger, "_collector")
+        setattr(VThermLogger, "_collector", None)
         name = self._unique_name("no_collector")
         logger = get_vtherm_logger(name)
         logger.setLevel(logging.WARNING)
         # Must not raise even without a collector
         logger.debug("Salon - no collector yet")
         # Restore
-        VThermLogger._collector = original
+        setattr(VThermLogger, "_collector", original)
 
     def test_handler_sets_collector_on_init(self):
         """Creating a VThermLogHandler registers it as the class-level collector."""
         h = VThermLogHandler()
-        assert VThermLogger._collector is h
+        assert getattr(VThermLogger, "_collector") is h
 
 
 # ---------------------------------------------------------------------------
@@ -332,14 +335,14 @@ class TestFormatHelpers:
             timestamp=datetime(2025, 3, 14, 10, 23, 45,
                                123000, tzinfo=timezone.utc),
             level=logging.INFO,
-            logger_name="custom_components.versatile_thermostat.base_thermostat",
+            logger_name=TEST_LOGGER_NAME,
             message="Salon - Temperature is 21°C",
             thermostat_hint="Salon",
         )
         line = _format_entry(entry)
         assert "2025-03-14 10:23:45.123" in line
         assert "INFO" in line
-        assert "[base_thermostat   ]" in line
+        assert "[test_thermostat   ]" in line
         assert "Salon - Temperature is 21°C" in line
 
     def test_format_header(self):
@@ -400,12 +403,12 @@ class TestAsyncExportLogs:
     """Tests for the full export flow."""
 
     @pytest.mark.asyncio
-    @patch("custom_components.versatile_thermostat.log_collector.async_sign_path", side_effect=lambda _h, path, _t: path + "?authSig=fake")
+    @patch("src.vtherm_api.log_collector.async_sign_path", side_effect=lambda _h, path, _t: path + "?authSig=fake")
     async def test_export_creates_file_and_notification(self, _mock_sign, tmp_path):
         handler = VThermLogHandler()
         # Insert test logs
         record = logging.LogRecord(
-            name="custom_components.versatile_thermostat.base_thermostat",
+            name=TEST_LOGGER_NAME,
             level=logging.INFO,
             pathname="",
             lineno=0,
@@ -454,11 +457,11 @@ class TestAsyncExportLogs:
         assert "Copy/paste" in call_args[0][2]["message"]
 
     @pytest.mark.asyncio
-    @patch("custom_components.versatile_thermostat.log_collector.async_sign_path", side_effect=lambda _h, path, _t: path + "?authSig=fake")
+    @patch("src.vtherm_api.log_collector.async_sign_path", side_effect=lambda _h, path, _t: path + "?authSig=fake")
     async def test_export_all_thermostats(self, _mock_sign, tmp_path):
         handler = VThermLogHandler()
         record = logging.LogRecord(
-            name="custom_components.versatile_thermostat.base_thermostat",
+            name=TEST_LOGGER_NAME,
             level=logging.DEBUG,
             pathname="",
             lineno=0,
@@ -493,7 +496,7 @@ class TestAsyncExportLogs:
         assert "All thermostats" in content
 
     @pytest.mark.asyncio
-    @patch("custom_components.versatile_thermostat.log_collector.async_sign_path", side_effect=lambda _h, path, _t: path + "?authSig=fake")
+    @patch("src.vtherm_api.log_collector.async_sign_path", side_effect=lambda _h, path, _t: path + "?authSig=fake")
     async def test_export_no_entries(self, _mock_sign, tmp_path):
         handler = VThermLogHandler()
 
@@ -521,14 +524,14 @@ class TestAsyncExportLogs:
         assert "Entries    : 0" in content
 
     @pytest.mark.asyncio
-    @patch("custom_components.versatile_thermostat.log_collector.async_sign_path", side_effect=lambda _h, path, _t: path + "?authSig=fake")
+    @patch("src.vtherm_api.log_collector.async_sign_path", side_effect=lambda _h, path, _t: path + "?authSig=fake")
     async def test_export_with_period(self, _mock_sign, tmp_path):
         handler = VThermLogHandler()
         now = datetime.now(tz=timezone.utc)
 
         # Insert old and recent records
         old_record = logging.LogRecord(
-            name="custom_components.versatile_thermostat.base_thermostat",
+            name=TEST_LOGGER_NAME,
             level=logging.INFO,
             pathname="",
             lineno=0,
@@ -540,7 +543,7 @@ class TestAsyncExportLogs:
         handler.emit(old_record)
 
         recent_record = logging.LogRecord(
-            name="custom_components.versatile_thermostat.base_thermostat",
+            name=TEST_LOGGER_NAME,
             level=logging.INFO,
             pathname="",
             lineno=0,
@@ -579,7 +582,7 @@ class TestAsyncExportLogs:
         assert "old entry" not in content
 
     @pytest.mark.asyncio
-    @patch("custom_components.versatile_thermostat.log_collector.async_sign_path", side_effect=lambda _h, path, _t: path + "?authSig=fake")
+    @patch("src.vtherm_api.log_collector.async_sign_path", side_effect=lambda _h, path, _t: path + "?authSig=fake")
     async def test_export_with_config_entry(self, _mock_sign, tmp_path):
         """Test that config_entry is included in the export header when provided."""
         now = datetime.now(tz=timezone.utc)
@@ -587,7 +590,7 @@ class TestAsyncExportLogs:
 
         # Add a test log entry
         record = logging.LogRecord(
-            name="custom_components.versatile_thermostat.base_thermostat",
+            name=TEST_LOGGER_NAME,
             level=logging.INFO,
             pathname="",
             lineno=0,

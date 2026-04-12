@@ -30,7 +30,7 @@ class TestLogDownloadViewHandler:
         return hass
 
     @pytest.fixture
-    async def log_download_view(self, mock_hass):
+    def log_download_view(self):
         """Create a LogDownloadView instance for testing."""
         from homeassistant.components.http import HomeAssistantView
 
