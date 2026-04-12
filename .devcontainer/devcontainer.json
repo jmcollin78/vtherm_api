@@ -1,0 +1,58 @@
+{
+    "name": "vtherm_api",
+    "image": "mcr.microsoft.com/devcontainers/python:3.14-bookworm",
+    "postCreateCommand": "python -m pip install --upgrade pip && python -m pip install -e .[dev]",
+    "remoteUser": "vscode",
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "python.defaultInterpreterPath": "/usr/local/bin/python",
+                "python.testing.pytestEnabled": true,
+                "python.testing.pytestArgs": ["tests"],
+                "[python]": {
+                    "editor.defaultFormatter": "ms-python.black-formatter"
+                },
+
+                "files.eol": "\n",
+                "editor.tabSize": 4,
+                "terminal.integrated.profiles.linux": {
+                    "bash": {
+                        "path": "bash",
+                        "args": []
+                    }
+                },
+                "terminal.integrated.defaultProfile.linux": "bash",
+                "python.pythonPath": "/usr/bin/python3",
+                "python.analysis.autoSearchPaths": true,
+                "pylint.lintOnChange": false,
+                "python.formatting.provider": "black",
+                "python.formatting.blackArgs": ["--line-length", "180"],
+                "python.formatting.blackPath": "/usr/local/py-utils/bin/black",
+                "editor.formatOnPaste": false,
+                "editor.formatOnSave": true,
+                "editor.formatOnType": true,
+                "files.trimTrailingWhitespace": true
+            },
+            "extensions": [
+                "ms-python.python",
+                "ms-python.pylint",
+                "ms-python.isort",
+                "ms-python.black-formatter",
+                "redhat.vscode-yaml",
+                "github.vscode-pull-request-github",
+                "ryanluker.vscode-coverage-gutters",
+                "ferrierbenjamin.fold-unfold-all-icone",
+                "donjayamanne.githistory",
+                "waderyan.gitblame",
+                "keesschollaart.vscode-home-assistant",
+                "vscode.markdown-math",
+                "yzhang.markdown-all-in-one",
+                "github.vscode-github-actions",
+                "azuretools.vscode-docker",
+                "huizhou.githd",
+                "github.copilot",
+                "bierner.markdown-mermaid"
+            ]
+        }
+    }
+}
