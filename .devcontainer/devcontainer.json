@@ -4,16 +4,15 @@
     "postCreateCommand": "python -m pip install --upgrade pip && python -m pip install -r requirements-dev.txt",
     "postStartCommand": "python -m pip install -r requirements-dev.txt",
     "remoteUser": "vscode",
+    "mounts": [
+        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/home/vscode/.ssh,type=bind,consistency=cached",
+    ],
     "customizations": {
         "vscode": {
             "settings": {
                 "python.defaultInterpreterPath": "/usr/local/bin/python",
                 "python.testing.pytestEnabled": true,
                 "python.testing.pytestArgs": ["tests"],
-                "[python]": {
-                    "editor.defaultFormatter": "ms-python.black-formatter"
-                },
-
                 "files.eol": "\n",
                 "editor.tabSize": 4,
                 "terminal.integrated.profiles.linux": {
