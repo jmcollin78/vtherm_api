@@ -17,6 +17,7 @@ The package is designed for Home Assistant integration code, not as a standalone
 - [Architecture](#architecture)
 - [Public imports](#public-imports)
 - [Using VThermAPI](#using-vthermapi)
+- [Creating a FeatureManager](#creating-a-featuremanager)
 - [Using PluginClimate](#using-pluginclimate)
 - [Supported VTherm events](#supported-vtherm-events)
 - [Practical patterns](#practical-patterns)
@@ -171,6 +172,126 @@ async def async_bind_plugin(hass):
 ```
 
 If you are working with a subclass of `PluginClimate`, direct linking is usually simpler and more explicit. That pattern is shown below.
+
+## Creating a FeatureManager
+
+`InterfaceFeatureManager` defines the contract expected by `VThermAPI.register_manager(...)`.
+
+When you call `api.register_manager(manager)`, the API scans the Home Assistant climate component and forwards the manager to every entity that:
+
+- exposes `device_info["model"] == DOMAIN`
+- implements `InterfaceThermostat`
+
+In practice, your custom manager only needs to implement the protocol and then be registered once.
+
+### Example: OddMinuteFeatureManager
+
+The example below toggles `is_detected` to `True` when the current minute is even, and to `False` when it is odd.
+
+```python
+from typing import Any
+
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant
+
+from vtherm_api.interfaces import InterfaceFeatureManager
+from vtherm_api.vtherm_api import VThermAPI
+
+
+class OddMinuteFeatureManager(InterfaceFeatureManager):
+    def __init__(self, hass: HomeAssistant) -> None:
+        self._hass = hass
+        self._is_configured = False
+        self._is_detected = False
+        self._listeners: list[CALLBACK_TYPE] = []
+
+    def post_init(self, entry_infos: dict[str, Any]) -> None:
+        self._is_configured = bool(entry_infos)
+
+    async def start_listening(self, force: bool = False) -> None:
+        return None
+
+    def stop_listening(self) -> bool:
+        for listener in list(self._listeners):
+            listener()
+        self._listeners.clear()
+        return True
+
+    async def refresh_state(self) -> bool:
+        api = VThermAPI.get_vtherm_api(self._hass)
+        self._is_detected = bool(api and api.now.minute % 2 == 0)
+        return self._is_detected
+
+    def restore_state(self, old_state: Any) -> None:
+        return None
+
+    def add_listener(self, func: CALLBACK_TYPE) -> None:
+        self._listeners.append(func)
+
+    @property
+    def is_configured(self) -> bool:
+        return self._is_configured
+
+    @property
+    def is_detected(self) -> bool:
+        return self._is_detected
+
+    @property
+    def name(self) -> str:
+        return "OddMinuteFeatureManager"
+
+    @property
+    def hass(self) -> HomeAssistant:
+        return self._hass
+```
+
+### Register the manager through VThermAPI
+
+```python
+from homeassistant.core import HomeAssistant
+
+from vtherm_api.vtherm_api import VThermAPI
+
+
+async def async_setup_entry(hass: HomeAssistant) -> None:
+    api = VThermAPI.get_vtherm_api(hass)
+
+    manager = OddMinuteFeatureManager(hass)
+    manager.post_init({"enabled": True})
+    await manager.refresh_state()
+
+    api.register_manager(manager)
+```
+
+### Minimal thermostat side contract
+
+The thermostat receiving the manager must implement `InterfaceThermostat` and expose a `register_manager(...)` method. A minimal test double looks like this:
+
+```python
+from vtherm_api.const import DOMAIN
+from vtherm_api.interfaces import InterfaceFeatureManager, InterfaceThermostat
+
+
+class FakeVTherm(InterfaceThermostat):
+    def __init__(self) -> None:
+        self._registered_managers: list[InterfaceFeatureManager] = []
+
+    @property
+    def name(self) -> str:
+        return "FakeVTherm"
+
+    def register_manager(self, manager: InterfaceFeatureManager) -> None:
+        self._registered_managers.append(manager)
+
+    @property
+    def unique_id(self) -> str:
+        return "fake-vtherm"
+
+    @property
+    def device_info(self) -> dict[str, str]:
+        return {"model": DOMAIN}
+```
+
+This is the same registration flow used in the test suite to validate manager instantiation and registration.
 
 ## Using PluginClimate
 

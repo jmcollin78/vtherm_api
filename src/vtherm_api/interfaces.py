@@ -23,15 +23,6 @@ class InterfaceThermostat(Protocol):
         """Register a feature manager to the thermostat."""
         ...
 
-    async def service_download_logs(
-        self,
-        log_level: str = "DEBUG",
-        period_start: datetime | None = None,
-        period_end: datetime | None = None,
-    ):
-        """Service to download logs from the thermostat."""
-        ...
-
     @property
     def unique_id(self) -> str:
         """Get the unique ID of the thermostat."""
