@@ -1,20 +1,21 @@
 """ The API of Versatile Thermostat"""
 from datetime import datetime
 from homeassistant.core import HomeAssistant
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_component import EntityComponent
 from homeassistant.components.climate import ClimateEntity, DOMAIN as CLIMATE_DOMAIN
 
-from .const import DOMAIN, VTHERM_API_NAME, CONF_NAME, NowClass
+from .const import DOMAIN, VTHERM_API_NAME, NowClass
 from .log_collector import get_vtherm_logger
 from .plugin_climate import PluginClimate
+from .interfaces import InterfaceThermostat, InterfaceFeatureManager
 
 _LOGGER = get_vtherm_logger(__name__)
 
 
 class VThermAPI:
     """The VThermAPI
-    This class is a singleton that provides access to the VTherm API instance through HA hass mecanism. It also provides a reference to the HA instance for use in the API implementation.
+    This class is a singleton that provides access to the VTherm API instance through HA hass mecanism.
+    It also provides a reference to the HA instance for use in the API implementation.
     """
 
     _hass: HomeAssistant = None
@@ -56,29 +57,6 @@ class VThermAPI:
                 VTHERM_API_NAME, None)
         VThermAPI._hass = None
 
-    def add_entry(self, entry: ConfigEntry):
-        """Add a new entry"""
-        name = entry.data.get(CONF_NAME)
-        _LOGGER.debug("%s - Add the entry %s - %s", name, entry.entry_id, name)
-        # Add the entry in hass.data
-        VThermAPI._hass.data[DOMAIN][entry.entry_id] = entry
-
-    def remove_entry(self, entry: ConfigEntry):
-        """Remove an entry"""
-        name = entry.data.get(CONF_NAME)
-        _LOGGER.debug("%s - Remove the entry %s - %s",
-                      name, entry.entry_id, name)
-        VThermAPI._hass.data[DOMAIN].pop(entry.entry_id)
-        # If not more entries are preset, remove the API
-        if (len([
-            val
-            for val in VThermAPI._hass.data[DOMAIN].values()
-            if isinstance(val, ConfigEntry)
-        ]) == 0):
-            _LOGGER.debug("No more entries-> Remove the API from DOMAIN")
-            if DOMAIN in VThermAPI._hass.data:
-                VThermAPI._hass.data.pop(DOMAIN)
-
     @property
     def hass(self):
         """Get the HomeAssistant object"""
@@ -109,12 +87,29 @@ class VThermAPI:
             for entity in list(component.entities):
                 try:
                     if entity.device_info and entity.device_info.get("model", None) == DOMAIN:
-                        if plugin_vtherm_entity_id == entity.entity_id and entity.__class__.__name__ == "PluginClimate":
+                        if plugin_vtherm_entity_id == entity.entity_id and isinstance(entity, InterfaceThermostat):
                             plugin_climate: PluginClimate = entity
                             _LOGGER.info(
                                 "%s - We have found the linked PluginVTherm", self)
                             plugin_climate.link_to_vtherm(vtherm)
                             return
+                except Exception as e:  # pylint: disable=broad-except
+                    _LOGGER.error(
+                        "Error searching/initializing entity %s: %s", entity.entity_id, e)
+
+    def register_manager(self, manager: InterfaceFeatureManager):
+        """Register a feature manager to the API."""
+        # Implementation for registering a feature manager
+        # Find all vtherm instance of type PluginClimate in hass and register the manager to them
+        component: EntityComponent[ClimateEntity] = self._hass.data.get(
+            CLIMATE_DOMAIN, None)
+        if component:
+            for entity in list(component.entities):
+                try:
+                    if entity.device_info and entity.device_info.get("model", None) == DOMAIN:
+                        if isinstance(entity, InterfaceThermostat):
+                            plugin_climate: PluginClimate = entity
+                            plugin_climate.register_manager(manager)
                 except Exception as e:  # pylint: disable=broad-except
                     _LOGGER.error(
                         "Error searching/initializing entity %s: %s", entity.entity_id, e)
