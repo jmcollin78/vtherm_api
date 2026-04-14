@@ -34,42 +34,42 @@ class VThermAPI:
         """Get the eventual VTherm API class instance or
         instantiate it if it doesn't exists"""
         if hass is not None:
-            VThermAPI._hass = hass
+            cls._hass = hass
 
-        if VThermAPI._hass is None:
+        if cls._hass is None:
             return None
 
-        domain = VThermAPI._hass.data.get(DOMAIN)
+        domain = cls._hass.data.get(DOMAIN)
         if not domain:
-            VThermAPI._hass.data.setdefault(DOMAIN, {})
+            cls._hass.data.setdefault(DOMAIN, {})
 
-        ret = VThermAPI._hass.data.get(
+        ret = cls._hass.data.get(
             DOMAIN).get(VTHERM_API_NAME)
         if ret is None:
-            ret = VThermAPI()
-            VThermAPI._hass.data[DOMAIN][VTHERM_API_NAME] = ret
+            ret = cls()
+            cls._hass.data[DOMAIN][VTHERM_API_NAME] = ret
         return ret
 
     @classmethod
     def reset_vtherm_api(cls):
         """Reset the VTherm API instance and related data."""
-        if VThermAPI._hass is None:
+        if cls._hass is None:
             return
 
-        api = VThermAPI._hass.data.get(DOMAIN, {}).get(VTHERM_API_NAME)
+        api = cls._hass.data.get(DOMAIN, {}).get(VTHERM_API_NAME)
         if api is not None:
             api._prop_algorithm_registry.clear()  # pylint: disable=protected-access
 
         # Remove the API instance from hass.data
-        if DOMAIN in VThermAPI._hass.data:
-            VThermAPI._hass.data[DOMAIN].pop(
+        if DOMAIN in cls._hass.data:
+            cls._hass.data[DOMAIN].pop(
                 VTHERM_API_NAME, None)
-        VThermAPI._hass = None
+        cls._hass = None
 
     @property
     def hass(self):
         """Get the HomeAssistant object"""
-        return VThermAPI._hass
+        return type(self)._hass
 
     @property
     def name(self) -> str:
