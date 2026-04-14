@@ -6,6 +6,7 @@ This package currently exposes two main building blocks:
 
 - `VThermAPI`: a singleton stored in `hass.data` that lets an integration register config entries, access the Home Assistant runtime, and link a plugin climate to an existing Versatile Thermostat entity.
 - `PluginClimate`: an event-driven helper that subscribes to Versatile Thermostat events for one linked thermostat and forwards service calls back to that thermostat.
+- A proportional algorithm plugin surface: runtime protocols plus a registry that lets an external integration register a proportional control handler by name.
 
 The package is designed for Home Assistant integration code, not as a standalone HTTP or REST API.
 
@@ -17,6 +18,7 @@ The package is designed for Home Assistant integration code, not as a standalone
 - [Architecture](#architecture)
 - [Public imports](#public-imports)
 - [Using VThermAPI](#using-vthermapi)
+- [Registering a proportional algorithm plugin](#registering-a-proportional-algorithm-plugin)
 - [Creating a FeatureManager](#creating-a-featuremanager)
 - [Using PluginClimate](#using-pluginclimate)
 - [Supported VTherm events](#supported-vtherm-events)
@@ -33,6 +35,7 @@ When you build custom Home Assistant code around Versatile Thermostat, you usual
 4. Relay actions such as HVAC mode or target temperature changes back to the linked thermostat.
 
 This package provides those responsibilities out of the box.
+It also lets an external integration register a proportional algorithm factory that VT can resolve dynamically.
 
 ## Requirements
 
@@ -94,9 +97,14 @@ The package root exports `PluginClimate` and `__version__`.
 Use these imports in integration code:
 
 ```python
-from vtherm_api import PluginClimate
+from vtherm_api import (
+    InterfacePropAlgorithmFactory,
+    InterfacePropAlgorithmHandler,
+    InterfaceThermostatRuntime,
+    PluginClimate,
+    VThermAPI,
+)
 from vtherm_api.const import DOMAIN, EventType
-from vtherm_api.vtherm_api import VThermAPI
 ```
 
 ## Using VThermAPI
@@ -147,6 +155,76 @@ from vtherm_api.vtherm_api import VThermAPI
 
 def teardown_function() -> None:
     VThermAPI.reset_vtherm_api()
+```
+
+## Registering a proportional algorithm plugin
+
+`VThermAPI` exposes a small registry for proportional algorithm factories:
+
+- `register_prop_algorithm(factory)`
+- `unregister_prop_algorithm(name)`
+- `get_prop_algorithm(name)`
+- `list_prop_algorithms()`
+
+Each registered factory must expose a stable `name` and a `create(thermostat)` method.
+The thermostat object passed to the factory implements `InterfaceThermostatRuntime`.
+
+```python
+from typing import Any
+
+from vtherm_api import (
+    InterfacePropAlgorithmFactory,
+    InterfacePropAlgorithmHandler,
+    InterfaceThermostatRuntime,
+    VThermAPI,
+)
+
+
+class SmartPIHandler(InterfacePropAlgorithmHandler):
+    def __init__(self, thermostat: InterfaceThermostatRuntime) -> None:
+        self._thermostat = thermostat
+
+    def init_algorithm(self) -> None:
+        self._thermostat.prop_algorithm = object()
+
+    async def async_added_to_hass(self) -> None:
+        return None
+
+    async def async_startup(self) -> None:
+        return None
+
+    def remove(self) -> None:
+        return None
+
+    async def control_heating(self, timestamp=None, force: bool = False) -> None:
+        return None
+
+    async def on_state_changed(self) -> None:
+        return None
+
+    def on_scheduler_ready(self, scheduler) -> None:
+        return None
+
+    def should_publish_intermediate(self) -> bool:
+        return True
+
+
+class SmartPIFactory(InterfacePropAlgorithmFactory):
+    @property
+    def name(self) -> str:
+        return "smart_pi"
+
+    def create(
+        self,
+        thermostat: InterfaceThermostatRuntime,
+    ) -> InterfacePropAlgorithmHandler:
+        return SmartPIHandler(thermostat)
+
+
+def register_plugin(hass: Any) -> None:
+    api = VThermAPI.get_vtherm_api(hass)
+    if api is not None:
+        api.register_prop_algorithm(SmartPIFactory())
 ```
 
 ### Link a plugin climate through the API helper

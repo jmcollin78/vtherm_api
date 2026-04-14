@@ -7,7 +7,11 @@ from homeassistant.components.climate import ClimateEntity, DOMAIN as CLIMATE_DO
 from .const import DOMAIN, VTHERM_API_NAME, NowClass
 from .log_collector import get_vtherm_logger
 from .plugin_climate import PluginClimate
-from .interfaces import InterfaceThermostat, InterfaceFeatureManager
+from .interfaces import (
+    InterfaceFeatureManager,
+    InterfacePropAlgorithmFactory,
+    InterfaceThermostat,
+)
 
 _LOGGER = get_vtherm_logger(__name__)
 
@@ -23,6 +27,7 @@ class VThermAPI:
     def __init__(self) -> None:
         """Initialize the VThermAPI instance."""
         self._now: datetime = None
+        self._prop_algorithm_registry: dict[str, InterfacePropAlgorithmFactory] = {}
 
     @classmethod
     def get_vtherm_api(cls, hass=None):
@@ -51,6 +56,10 @@ class VThermAPI:
         if VThermAPI._hass is None:
             return
 
+        api = VThermAPI._hass.data.get(DOMAIN, {}).get(VTHERM_API_NAME)
+        if api is not None:
+            api._prop_algorithm_registry.clear()  # pylint: disable=protected-access
+
         # Remove the API instance from hass.data
         if DOMAIN in VThermAPI._hass.data:
             VThermAPI._hass.data[DOMAIN].pop(
@@ -76,6 +85,26 @@ class VThermAPI:
     def now(self) -> datetime:
         """Get now. The local datetime or the overloaded _set_now date"""
         return self._now if self._now is not None else NowClass.get_now(self._hass)
+
+    def register_prop_algorithm(self, factory: InterfacePropAlgorithmFactory) -> None:
+        """Register or replace a proportional algorithm factory."""
+        name = factory.name.strip()
+        if not name:
+            raise ValueError("The proportional algorithm factory name cannot be empty")
+
+        self._prop_algorithm_registry[name] = factory
+
+    def unregister_prop_algorithm(self, name: str) -> None:
+        """Remove a proportional algorithm factory from the registry."""
+        self._prop_algorithm_registry.pop(name, None)
+
+    def get_prop_algorithm(self, name: str) -> InterfacePropAlgorithmFactory | None:
+        """Return the registered proportional algorithm factory for a name."""
+        return self._prop_algorithm_registry.get(name)
+
+    def list_prop_algorithms(self) -> list[str]:
+        """Return the registered proportional algorithm names in sorted order."""
+        return sorted(self._prop_algorithm_registry)
 
     def link_to_vtherm(self, vtherm, plugin_vtherm_entity_id: str):
         """Link the VTherm API to a specific VTherm entity."""
