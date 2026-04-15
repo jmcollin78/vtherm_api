@@ -2,129 +2,111 @@
 
 ## Component overview
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Home Assistant runtime                     │
-│                                                                 │
-│  ┌─────────────┐    ┌──────────────────────────────────────┐   │
-│  │ ConfigEntry │───▶│  VThermAPI (singleton in hass.data)  │   │
-│  └─────────────┘    │                                      │   │
-│                     │  - entry registry                    │   │
-│                     │  - prop algorithm registry           │   │
-│                     │  - feature manager registry          │   │
-│                     └──────────────────────────────────────┘   │
-│                                                                 │
-│  ┌──────────────────────┐     ┌───────────────────────────┐    │
-│  │  Versatile Thermostat │────▶│   HA Event Bus            │    │
-│  │  entity (VTherm)      │     │                           │    │
-│  └──────────────────────┘     └────────────┬──────────────┘    │
-│                                            │                   │
-│                                   ┌────────▼────────┐          │
-│                                   │  PluginClimate  │          │
-│                                   │                 │          │
-│                                   │  - event cache  │          │
-│                                   │  - handle_*()   │          │
-│                                   └────────┬────────┘          │
-│                                            │                   │
-│                              ┌─────────────▼──────────────┐    │
-│                              │   HA Service Registry      │    │
-│                              │   domain: versatile_thermo │    │
-│                              └─────────────┬──────────────┘    │
-│                                            │                   │
-│                              ┌─────────────▼──────────────┐    │
-│                              │  Versatile Thermostat      │    │
-│                              │  entity (action executed)  │    │
-│                              └────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────┘
+```text
+Home Assistant runtime
+    |
+    +-- VThermAPI singleton in hass.data
+    |     - access to hass
+    |     - access to now
+    |     - proportional algorithm registry
+    |     - manager registration helper
+    |
+    +-- Versatile Thermostat climate entities
+    |     - emit VTherm events on the HA bus
+    |     - expose runtime interfaces to algorithm handlers
+    |
+    +-- PluginClimate helpers
+          - subscribe to VTherm events for one linked thermostat
+          - cache the latest payload per event type
+          - forward HA service calls back to the linked thermostat
 ```
 
 ## Event flow
 
-```
+```text
 VTherm entity
-    │
-    │  emits: versatile_thermostat_temperature_event
-    ▼
+    |
+    | emits versatile_thermostat_temperature_event
+    v
 HA Event Bus
-    │
-    │  dispatched to all registered listeners
-    ▼
+    |
+    v
 PluginClimate listener
-    │
-    ├── check entity_id matches linked thermostat → ignore if not
-    ├── store payload in event cache
-    ├── call handle_temperature_event(event)
-    │
-    └── (optional) call_linked_vtherm_action(...)
-            │
-            ▼
+    |
+    +-- ignore the event if entity_id does not match the linked VTherm
+    +-- store the payload in the local event cache
+    +-- dispatch to handle_temperature_event(event)
+    |
+    +-- optional:
+        call_linked_vtherm_action(...)
+            |
+            v
         hass.services.async_call(
             domain="versatile_thermostat",
             service="set_target_temperature",
             target={"entity_id": linked_entity_id},
-            ...
         )
 ```
 
-## Singleton lifecycle
+## VThermAPI lifecycle
 
 `VThermAPI` is stored in `hass.data[DOMAIN][VTHERM_API_NAME]`.
 
-```
-async_setup_entry called
-    │
-    ▼
+```text
+async_setup_entry
+    |
+    v
 VThermAPI.get_vtherm_api(hass)
-    │
-    ├── instance already in hass.data? → return it
-    └── not found → create new instance, store in hass.data, return it
+    |
+    +-- existing instance -> return it
+    +-- no instance yet   -> create it, store it, return it
 
-async_unload_entry called
-    │
-    ▼
-VThermAPI.get_vtherm_api()   ← no hass argument → returns existing
-    │
-    └── api.remove_entry(entry)
+async_unload_entry
+    |
+    v
+VThermAPI.get_vtherm_api()
+    |
+    +-- reuse the existing singleton if needed
 ```
 
-## Plugin algorithm lifecycle
+## Proportional algorithm lifecycle
 
-```
+```text
 Integration setup
-    │
-    ▼
+    |
+    v
 api.register_prop_algorithm(factory)
-    │                                   ← factory stored in registry by name
-    ▼
-VTherm creates thermostat entity
-    │
-    ▼
-VTherm calls factory.create(thermostat)
-    │
-    ▼
+    |
+    v
+VTherm creates thermostat runtime
+    |
+    v
+factory.create(thermostat)
+    |
+    v
 handler.init_algorithm()
 handler.async_added_to_hass()
 handler.async_startup()
-    │
-    │  (on each cycle)
-    ▼
-handler.control_heating(timestamp, force)
-    │
-    │  (on state change)
-    ▼
-handler.on_state_changed()
-    │
-    │  (on unload)
-    ▼
-handler.remove()
+    |
+    +-- on every control iteration:
+    |   handler.control_heating(timestamp, force)
+    |
+    +-- when thermostat state changes:
+    |   handler.on_state_changed()
+    |
+    +-- when scheduler becomes available:
+    |   handler.on_scheduler_ready(scheduler)
+    |
+    +-- on unload:
+        handler.remove()
 ```
+
+## Real-world mappings
+
+- `vtherm_smartpi` uses the proportional algorithm lifecycle extensively.
+- `vtherm_climate_replication` mostly uses the `PluginClimate` service-forwarding side and links directly to a target VTherm entity from the climate component.
 
 ## Protocol-based design
 
-All contracts between the API and VTherm (and between plugins and VTherm) are defined as `@runtime_checkable` `Protocol` classes. This means:
-
-- Plugins do **not** need to import VTherm source code.
-- Type checking works with duck-typing: any class implementing the required attributes and methods satisfies the protocol.
-- Protocols can be verified at runtime with `isinstance(obj, InterfaceXxx)`.
-
-See [Interfaces](api-reference.md#interfaces) for the full list.
+All contracts between the API and VTherm are defined as runtime-checkable `Protocol` classes.
+This means plugins do not need to import VTherm internals directly and can rely on duck typing.

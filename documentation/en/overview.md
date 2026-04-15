@@ -23,7 +23,7 @@ When you build a custom Home Assistant integration around Versatile Thermostat, 
 
 | Component | Purpose |
 |---|---|
-| `VThermAPI` | Singleton attached to `hass.data`. Registers config entries, exposes `hass` and `now`, and manages the plugin registry. |
+| `VThermAPI` | Singleton attached to `hass.data`. Exposes `hass` and `now`, manages the proportional algorithm registry, and registers feature managers. |
 | `PluginClimate` | Event listener + service forwarder bound to one linked VTherm entity. |
 | `InterfacePropAlgorithmFactory` / `InterfacePropAlgorithmHandler` | Protocols for registering a custom proportional algorithm. |
 | `InterfaceFeatureManager` | Protocol for a feature manager that extends thermostat behavior. |

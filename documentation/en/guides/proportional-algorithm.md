@@ -2,100 +2,130 @@
 
 ## Goal
 
-Replace or extend VTherm's proportional heating control algorithm with a custom implementation.
+Replace or extend VTherm's proportional control algorithm with a custom implementation.
 
 ## Concepts
 
-- **`InterfacePropAlgorithmFactory`**: a named factory that VTherm uses to create algorithm handlers.
-- **`InterfacePropAlgorithmHandler`**: the lifecycle object bound to one thermostat instance, called by VTherm during each control cycle.
-- **`InterfaceThermostatRuntime`**: the thermostat view exposed to the handler, providing read access to temperatures, HVAC state, and the cycle scheduler.
+- `InterfacePropAlgorithmFactory`: named factory registered once in `VThermAPI`
+- `InterfacePropAlgorithmHandler`: lifecycle object created for one thermostat runtime
+- `InterfaceThermostatRuntime`: runtime view exposed by VTherm to the handler
+
+`vtherm_smartpi` is the main real-world example of this extension point.
+It registers one factory, then VTherm creates one handler per thermostat using that proportional function.
 
 ## Step 1: Implement the handler
 
 ```python
-from datetime import datetime
-from typing import Any
+from datetime import datetime, timedelta
 
-from vtherm_api import InterfacePropAlgorithmHandler, InterfaceThermostatRuntime
-from vtherm_api.interfaces import InterfaceCycleScheduler
+from homeassistant.helpers.event import async_track_time_interval
+
+from vtherm_api import InterfaceThermostatRuntime
 
 
 class MyAlgorithmHandler:
-    """Custom proportional algorithm handler."""
-
     def __init__(self, thermostat: InterfaceThermostatRuntime) -> None:
         self._thermostat = thermostat
-        self._scheduler: InterfaceCycleScheduler | None = None
+        self._remove_timer = None
 
     def init_algorithm(self) -> None:
-        """Set up the algorithm object on the thermostat."""
-        # Assign whatever object VTherm expects as prop_algorithm
-        self._thermostat.prop_algorithm = self
+        t = self._thermostat
+        t.minimal_activation_delay = 30
+        t.minimal_deactivation_delay = 30
+        t.prop_algorithm = MyInternalAlgorithm(
+            cycle_min=t.cycle_min,
+            name=t.name,
+        )
 
     async def async_added_to_hass(self) -> None:
-        """Called when the thermostat entity is added to HA."""
+        return None
 
     async def async_startup(self) -> None:
-        """Called after thermostat initialization — safe to read config here."""
+        await self.on_state_changed()
 
     def remove(self) -> None:
-        """Release any resources (listeners, timers, etc.)."""
+        self._stop_timer()
 
     async def control_heating(
         self,
         timestamp: datetime | None = None,
         force: bool = False,
     ) -> None:
-        """
-        Main control loop — called every cycle.
-
-        Use self._thermostat to read temperatures and state.
-        Use self._scheduler to start/stop cycles.
-        """
-        current = self._thermostat.current_temperature
-        target = self._thermostat.target_temperature
+        t = self._thermostat
+        current = t.current_temperature
+        target = t.target_temperature
 
         if current is None or target is None:
             return
 
-        # Simple bang-bang example:
-        if current < target - 0.5:
-            on_percent = 1.0
-        elif current > target + 0.5:
-            on_percent = 0.0
-        else:
-            on_percent = (target - current + 0.5)  # proportional
+        if t.vtherm_hvac_mode == "off":
+            if t.is_device_active:
+                await t.async_underlying_entity_turn_off()
+            return
 
-        if self._scheduler is not None:
-            await self._scheduler.start_cycle(
-                hvac_mode=self._thermostat.vtherm_hvac_mode,
-                on_percent=max(0.0, min(1.0, on_percent)),
+        on_percent = t.prop_algorithm.calculate(
+            target_temp=target,
+            current_temp=current,
+            ext_current_temp=t.current_outdoor_temperature,
+            slope=t.last_temperature_slope,
+            hvac_mode=t.vtherm_hvac_mode,
+            power_shedding=t.is_overpowering_detected,
+            off_reason=t.hvac_off_reason,
+        )
+
+        if t.cycle_scheduler is not None:
+            await t.cycle_scheduler.start_cycle(
+                t.vtherm_hvac_mode,
+                on_percent,
+                force=force,
             )
 
-    async def on_state_changed(self) -> None:
-        """React to thermostat state change (preset, HVAC mode, etc.)."""
+        t.update_custom_attributes()
+        t.async_write_ha_state()
 
-    def on_scheduler_ready(self, scheduler: InterfaceCycleScheduler) -> None:
-        """Receive the cycle scheduler once it is initialized."""
-        self._scheduler = scheduler
+    async def on_state_changed(self) -> None:
+        t = self._thermostat
+        if t.vtherm_hvac_mode == "off":
+            self._stop_timer()
+        else:
+            self._start_timer()
+
+    def on_scheduler_ready(self, scheduler) -> None:
+        algo = self._thermostat.prop_algorithm
+        scheduler.register_cycle_start_callback(algo.on_cycle_started)
+        scheduler.register_cycle_end_callback(algo.on_cycle_completed)
 
     def should_publish_intermediate(self) -> bool:
-        """Return True to allow VTherm to publish intermediate states."""
         return True
+
+    def _start_timer(self) -> None:
+        if self._remove_timer is not None:
+            return
+
+        self._remove_timer = async_track_time_interval(
+            self._thermostat.hass,
+            lambda now: self._thermostat.hass.async_create_task(
+                self._thermostat.async_control_heating()
+            ),
+            timedelta(seconds=30),
+        )
+
+    def _stop_timer(self) -> None:
+        if self._remove_timer is not None:
+            self._remove_timer()
+            self._remove_timer = None
 ```
 
 ## Step 2: Implement the factory
 
 ```python
-from vtherm_api import InterfacePropAlgorithmFactory, InterfaceThermostatRuntime
+from vtherm_api import InterfaceThermostatRuntime
 
 
 class MyAlgorithmFactory:
-    """Factory registered with VThermAPI."""
-
     @property
     def name(self) -> str:
-        return "my_algorithm"  # Unique identifier — used in config
+        return "my_algorithm"
 
     def create(self, thermostat: InterfaceThermostatRuntime) -> MyAlgorithmHandler:
         return MyAlgorithmHandler(thermostat)
@@ -103,17 +133,15 @@ class MyAlgorithmFactory:
 
 ## Step 3: Register the factory
 
-Register the factory when your integration sets up:
-
 ```python
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-
 from vtherm_api import VThermAPI
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass, entry) -> bool:
     api = VThermAPI.get_vtherm_api(hass)
+    if api is None:
+        return False
+
     api.register_prop_algorithm(MyAlgorithmFactory())
     return True
 ```
@@ -121,35 +149,41 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 ## Step 4: Unregister on unload
 
 ```python
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass, entry) -> bool:
     api = VThermAPI.get_vtherm_api()
     if api is not None:
         api.unregister_prop_algorithm("my_algorithm")
-        api.remove_entry(entry)
     return True
 ```
 
-## List registered algorithms
+## What SmartPI shows in practice
 
-```python
-api = VThermAPI.get_vtherm_api(hass)
-names = api.list_prop_algorithms()
-# → ["my_algorithm", "smart_pi", ...]
-```
+The `vtherm_smartpi` integration demonstrates a few important patterns that are not obvious from the bare interface definitions:
 
-## Reading thermostat state
+- `thermostat.prop_algorithm` can hold a rich internal algorithm object rather than the handler itself
+- `on_scheduler_ready(...)` is the place to bind cycle start and cycle end callbacks
+- `on_state_changed(...)` is a good place to start or stop periodic recalculation timers
+- `async_underlying_entity_turn_off()` is useful when your logic decides VTherm must force the underlying device off
+- `async_control_heating()` can be re-triggered by your own timer between normal cycle boundaries
 
-Inside `control_heating`, use `InterfaceThermostatRuntime` properties:
+## Reading thermostat runtime state
+
+Inside your handler, these runtime values are commonly used:
 
 ```python
 async def control_heating(self, timestamp=None, force: bool = False) -> None:
-    t_current = self._thermostat.current_temperature
-    t_outdoor = self._thermostat.current_outdoor_temperature
-    t_target  = self._thermostat.target_temperature
-    slope     = self._thermostat.last_temperature_slope
-    mode      = self._thermostat.vtherm_hvac_mode
-    cycle_min = self._thermostat.cycle_min
-    active    = self._thermostat.is_device_active
+    t = self._thermostat
+
+    current = t.current_temperature
+    outdoor = t.current_outdoor_temperature
+    target = t.target_temperature
+    slope = t.last_temperature_slope
+    mode = t.vtherm_hvac_mode
+    cycle_min = t.cycle_min
+    scheduler = t.cycle_scheduler
+    active = t.is_device_active
+    overpowering = t.is_overpowering_detected
+    off_reason = t.hvac_off_reason
 ```
 
-See [InterfaceThermostatRuntime](../api-reference.md#interfacethermostatruntime) for the full list of available properties.
+See [InterfaceThermostatRuntime](../api-reference.md#interfacethermostatruntime) for the full contract.
