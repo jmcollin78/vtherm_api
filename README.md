@@ -10,6 +10,8 @@ This package currently exposes two main building blocks:
 
 The package is designed for Home Assistant integration code, not as a standalone HTTP or REST API.
 
+**Full documentation**: [documentation/en/index.md](documentation/en/index.md)
+
 ## Table of contents
 
 - [What this package solves](#what-this-package-solves)
