@@ -4,7 +4,7 @@ Developer-facing API for integrating with Versatile Thermostat inside Home Assis
 
 This package currently exposes two main building blocks:
 
-- `VThermAPI`: a singleton stored in `hass.data` that lets an integration register config entries, access the Home Assistant runtime, and link a plugin climate to an existing Versatile Thermostat entity.
+- `VThermAPI`: a singleton stored in `hass.data` that gives an integration access to the Home Assistant runtime, the proportional algorithm registry, feature-manager registration, and optional plugin-climate linking helpers.
 - `PluginClimate`: an event-driven helper that subscribes to Versatile Thermostat events for one linked thermostat and forwards service calls back to that thermostat.
 - A proportional algorithm plugin surface: runtime protocols plus a registry that lets an external integration register a proportional control handler by name.
 
@@ -116,23 +116,22 @@ from vtherm_api.const import DOMAIN, EventType
 ### Main responsibilities
 
 - attach the API instance to a `HomeAssistant` object
-- register and remove `ConfigEntry` instances
 - expose the active `HomeAssistant` object through `api.hass`
 - expose a timezone-aware `api.now`
+- register and unregister proportional algorithm factories
+- register feature managers on compatible VTherm entities
 - optionally link a plugin climate entity to a VTherm climate entity
 
 ### Create or retrieve the singleton
 
 ```python
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-
 from vtherm_api.vtherm_api import VThermAPI
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass, entry) -> bool:
     api = VThermAPI.get_vtherm_api(hass)
-    api.add_entry(entry)
+    if api is None:
+        return False
 
     print(api.name)  # VThermAPI
     print(api.hass is hass)  # True
@@ -140,10 +139,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    api = VThermAPI.get_vtherm_api()
-    if api is not None:
-        api.remove_entry(entry)
+async def async_unload_entry(hass, entry) -> bool:
+    # No explicit unregister call is required for the singleton itself.
     return True
 ```
 
@@ -530,24 +527,25 @@ The plugin listens to every event defined by `EventType`.
 
 ## Practical patterns
 
-### Pattern 1: register the API in your custom integration
+### Pattern 1: register a proportional algorithm factory
 
 ```python
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-
 from vtherm_api.vtherm_api import VThermAPI
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    VThermAPI.get_vtherm_api(hass).add_entry(entry)
+async def async_setup_entry(hass, entry) -> bool:
+    api = VThermAPI.get_vtherm_api(hass)
+    if api is None:
+        return False
+
+    api.register_prop_algorithm(SmartPIFactory())
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass, entry) -> bool:
     api = VThermAPI.get_vtherm_api()
     if api is not None:
-        api.remove_entry(entry)
+        api.unregister_prop_algorithm("smart_pi")
     return True
 ```
 
@@ -576,7 +574,34 @@ plugin = MirrorPluginClimate(hass)
 plugin.link_to_vtherm(SimpleNamespace(entity_id="climate.office"))
 ```
 
-### Pattern 3: expose a command through your own integration code
+### Pattern 3: replicate another climate entity to a target VTherm
+
+This is the pattern used by `vtherm_climate_replication`: track a physical climate entity, then forward selected state changes to the linked VTherm.
+
+```python
+from homeassistant.components.climate.const import (
+    ATTR_HVAC_MODE,
+    SERVICE_SET_HVAC_MODE,
+    SERVICE_SET_TEMPERATURE,
+)
+from homeassistant.const import ATTR_TEMPERATURE
+
+
+async def async_replicate_state(plugin: PluginClimate, state) -> None:
+    await plugin.call_linked_vtherm_action(
+        SERVICE_SET_HVAC_MODE,
+        action_data={ATTR_HVAC_MODE: state.attributes.get(ATTR_HVAC_MODE, state.state)},
+    )
+
+    temperature = state.attributes.get(ATTR_TEMPERATURE)
+    if temperature is not None:
+        await plugin.call_linked_vtherm_action(
+            SERVICE_SET_TEMPERATURE,
+            action_data={ATTR_TEMPERATURE: temperature},
+        )
+```
+
+### Pattern 4: expose a command through your own integration code
 
 ```python
 async def async_set_eco(plugin: PluginClimate) -> None:
