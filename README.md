@@ -4,10 +4,13 @@ Developer-facing API for integrating with Versatile Thermostat inside Home Assis
 
 This package currently exposes two main building blocks:
 
-- `VThermAPI`: a singleton stored in `hass.data` that lets an integration register config entries, access the Home Assistant runtime, and link a plugin climate to an existing Versatile Thermostat entity.
+- `VThermAPI`: a singleton stored in `hass.data` that gives an integration access to the Home Assistant runtime, the proportional algorithm registry, feature-manager registration, and optional plugin-climate linking helpers.
 - `PluginClimate`: an event-driven helper that subscribes to Versatile Thermostat events for one linked thermostat and forwards service calls back to that thermostat.
+- A proportional algorithm plugin surface: runtime protocols plus a registry that lets an external integration register a proportional control handler by name.
 
 The package is designed for Home Assistant integration code, not as a standalone HTTP or REST API.
+
+**Full documentation**: [documentation/en/index.md](documentation/en/index.md)
 
 ## Table of contents
 
@@ -17,6 +20,7 @@ The package is designed for Home Assistant integration code, not as a standalone
 - [Architecture](#architecture)
 - [Public imports](#public-imports)
 - [Using VThermAPI](#using-vthermapi)
+- [Registering a proportional algorithm plugin](#registering-a-proportional-algorithm-plugin)
 - [Creating a FeatureManager](#creating-a-featuremanager)
 - [Using PluginClimate](#using-pluginclimate)
 - [Supported VTherm events](#supported-vtherm-events)
@@ -33,6 +37,7 @@ When you build custom Home Assistant code around Versatile Thermostat, you usual
 4. Relay actions such as HVAC mode or target temperature changes back to the linked thermostat.
 
 This package provides those responsibilities out of the box.
+It also lets an external integration register a proportional algorithm factory that VT can resolve dynamically.
 
 ## Requirements
 
@@ -94,9 +99,14 @@ The package root exports `PluginClimate` and `__version__`.
 Use these imports in integration code:
 
 ```python
-from vtherm_api import PluginClimate
+from vtherm_api import (
+    InterfacePropAlgorithmFactory,
+    InterfacePropAlgorithmHandler,
+    InterfaceThermostatRuntime,
+    PluginClimate,
+    VThermAPI,
+)
 from vtherm_api.const import DOMAIN, EventType
-from vtherm_api.vtherm_api import VThermAPI
 ```
 
 ## Using VThermAPI
@@ -106,23 +116,22 @@ from vtherm_api.vtherm_api import VThermAPI
 ### Main responsibilities
 
 - attach the API instance to a `HomeAssistant` object
-- register and remove `ConfigEntry` instances
 - expose the active `HomeAssistant` object through `api.hass`
 - expose a timezone-aware `api.now`
+- register and unregister proportional algorithm factories
+- register feature managers on compatible VTherm entities
 - optionally link a plugin climate entity to a VTherm climate entity
 
 ### Create or retrieve the singleton
 
 ```python
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-
 from vtherm_api.vtherm_api import VThermAPI
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass, entry) -> bool:
     api = VThermAPI.get_vtherm_api(hass)
-    api.add_entry(entry)
+    if api is None:
+        return False
 
     print(api.name)  # VThermAPI
     print(api.hass is hass)  # True
@@ -130,10 +139,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    api = VThermAPI.get_vtherm_api()
-    if api is not None:
-        api.remove_entry(entry)
+async def async_unload_entry(hass, entry) -> bool:
+    # No explicit unregister call is required for the singleton itself.
     return True
 ```
 
@@ -147,6 +154,76 @@ from vtherm_api.vtherm_api import VThermAPI
 
 def teardown_function() -> None:
     VThermAPI.reset_vtherm_api()
+```
+
+## Registering a proportional algorithm plugin
+
+`VThermAPI` exposes a small registry for proportional algorithm factories:
+
+- `register_prop_algorithm(factory)`
+- `unregister_prop_algorithm(name)`
+- `get_prop_algorithm(name)`
+- `list_prop_algorithms()`
+
+Each registered factory must expose a stable `name` and a `create(thermostat)` method.
+The thermostat object passed to the factory implements `InterfaceThermostatRuntime`.
+
+```python
+from typing import Any
+
+from vtherm_api import (
+    InterfacePropAlgorithmFactory,
+    InterfacePropAlgorithmHandler,
+    InterfaceThermostatRuntime,
+    VThermAPI,
+)
+
+
+class SmartPIHandler(InterfacePropAlgorithmHandler):
+    def __init__(self, thermostat: InterfaceThermostatRuntime) -> None:
+        self._thermostat = thermostat
+
+    def init_algorithm(self) -> None:
+        self._thermostat.prop_algorithm = object()
+
+    async def async_added_to_hass(self) -> None:
+        return None
+
+    async def async_startup(self) -> None:
+        return None
+
+    def remove(self) -> None:
+        return None
+
+    async def control_heating(self, timestamp=None, force: bool = False) -> None:
+        return None
+
+    async def on_state_changed(self) -> None:
+        return None
+
+    def on_scheduler_ready(self, scheduler) -> None:
+        return None
+
+    def should_publish_intermediate(self) -> bool:
+        return True
+
+
+class SmartPIFactory(InterfacePropAlgorithmFactory):
+    @property
+    def name(self) -> str:
+        return "smart_pi"
+
+    def create(
+        self,
+        thermostat: InterfaceThermostatRuntime,
+    ) -> InterfacePropAlgorithmHandler:
+        return SmartPIHandler(thermostat)
+
+
+def register_plugin(hass: Any) -> None:
+    api = VThermAPI.get_vtherm_api(hass)
+    if api is not None:
+        api.register_prop_algorithm(SmartPIFactory())
 ```
 
 ### Link a plugin climate through the API helper
@@ -450,24 +527,25 @@ The plugin listens to every event defined by `EventType`.
 
 ## Practical patterns
 
-### Pattern 1: register the API in your custom integration
+### Pattern 1: register a proportional algorithm factory
 
 ```python
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-
 from vtherm_api.vtherm_api import VThermAPI
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    VThermAPI.get_vtherm_api(hass).add_entry(entry)
+async def async_setup_entry(hass, entry) -> bool:
+    api = VThermAPI.get_vtherm_api(hass)
+    if api is None:
+        return False
+
+    api.register_prop_algorithm(SmartPIFactory())
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass, entry) -> bool:
     api = VThermAPI.get_vtherm_api()
     if api is not None:
-        api.remove_entry(entry)
+        api.unregister_prop_algorithm("smart_pi")
     return True
 ```
 
@@ -496,7 +574,34 @@ plugin = MirrorPluginClimate(hass)
 plugin.link_to_vtherm(SimpleNamespace(entity_id="climate.office"))
 ```
 
-### Pattern 3: expose a command through your own integration code
+### Pattern 3: replicate another climate entity to a target VTherm
+
+This is the pattern used by `vtherm_climate_replication`: track a physical climate entity, then forward selected state changes to the linked VTherm.
+
+```python
+from homeassistant.components.climate.const import (
+    ATTR_HVAC_MODE,
+    SERVICE_SET_HVAC_MODE,
+    SERVICE_SET_TEMPERATURE,
+)
+from homeassistant.const import ATTR_TEMPERATURE
+
+
+async def async_replicate_state(plugin: PluginClimate, state) -> None:
+    await plugin.call_linked_vtherm_action(
+        SERVICE_SET_HVAC_MODE,
+        action_data={ATTR_HVAC_MODE: state.attributes.get(ATTR_HVAC_MODE, state.state)},
+    )
+
+    temperature = state.attributes.get(ATTR_TEMPERATURE)
+    if temperature is not None:
+        await plugin.call_linked_vtherm_action(
+            SERVICE_SET_TEMPERATURE,
+            action_data={ATTR_TEMPERATURE: temperature},
+        )
+```
+
+### Pattern 4: expose a command through your own integration code
 
 ```python
 async def async_set_eco(plugin: PluginClimate) -> None:

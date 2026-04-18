@@ -7,7 +7,11 @@ from homeassistant.components.climate import ClimateEntity, DOMAIN as CLIMATE_DO
 from .const import DOMAIN, VTHERM_API_NAME, NowClass
 from .log_collector import get_vtherm_logger
 from .plugin_climate import PluginClimate
-from .interfaces import InterfaceThermostat, InterfaceFeatureManager
+from .interfaces import (
+    InterfaceFeatureManager,
+    InterfacePropAlgorithmFactory,
+    InterfaceThermostat,
+)
 
 _LOGGER = get_vtherm_logger(__name__)
 
@@ -23,44 +27,49 @@ class VThermAPI:
     def __init__(self) -> None:
         """Initialize the VThermAPI instance."""
         self._now: datetime = None
+        self._prop_algorithm_registry: dict[str, InterfacePropAlgorithmFactory] = {}
 
     @classmethod
     def get_vtherm_api(cls, hass=None):
         """Get the eventual VTherm API class instance or
         instantiate it if it doesn't exists"""
         if hass is not None:
-            VThermAPI._hass = hass
+            cls._hass = hass
 
-        if VThermAPI._hass is None:
+        if cls._hass is None:
             return None
 
-        domain = VThermAPI._hass.data.get(DOMAIN)
+        domain = cls._hass.data.get(DOMAIN)
         if not domain:
-            VThermAPI._hass.data.setdefault(DOMAIN, {})
+            cls._hass.data.setdefault(DOMAIN, {})
 
-        ret = VThermAPI._hass.data.get(
+        ret = cls._hass.data.get(
             DOMAIN).get(VTHERM_API_NAME)
         if ret is None:
-            ret = VThermAPI()
-            VThermAPI._hass.data[DOMAIN][VTHERM_API_NAME] = ret
+            ret = cls()
+            cls._hass.data[DOMAIN][VTHERM_API_NAME] = ret
         return ret
 
     @classmethod
     def reset_vtherm_api(cls):
         """Reset the VTherm API instance and related data."""
-        if VThermAPI._hass is None:
+        if cls._hass is None:
             return
 
+        api = cls._hass.data.get(DOMAIN, {}).get(VTHERM_API_NAME)
+        if api is not None:
+            api._prop_algorithm_registry.clear()  # pylint: disable=protected-access
+
         # Remove the API instance from hass.data
-        if DOMAIN in VThermAPI._hass.data:
-            VThermAPI._hass.data[DOMAIN].pop(
+        if DOMAIN in cls._hass.data:
+            cls._hass.data[DOMAIN].pop(
                 VTHERM_API_NAME, None)
-        VThermAPI._hass = None
+        cls._hass = None
 
     @property
     def hass(self):
         """Get the HomeAssistant object"""
-        return VThermAPI._hass
+        return type(self)._hass
 
     @property
     def name(self) -> str:
@@ -76,6 +85,26 @@ class VThermAPI:
     def now(self) -> datetime:
         """Get now. The local datetime or the overloaded _set_now date"""
         return self._now if self._now is not None else NowClass.get_now(self._hass)
+
+    def register_prop_algorithm(self, factory: InterfacePropAlgorithmFactory) -> None:
+        """Register or replace a proportional algorithm factory."""
+        name = factory.name.strip()
+        if not name:
+            raise ValueError("The proportional algorithm factory name cannot be empty")
+
+        self._prop_algorithm_registry[name] = factory
+
+    def unregister_prop_algorithm(self, name: str) -> None:
+        """Remove a proportional algorithm factory from the registry."""
+        self._prop_algorithm_registry.pop(name, None)
+
+    def get_prop_algorithm(self, name: str) -> InterfacePropAlgorithmFactory | None:
+        """Return the registered proportional algorithm factory for a name."""
+        return self._prop_algorithm_registry.get(name)
+
+    def list_prop_algorithms(self) -> list[str]:
+        """Return the registered proportional algorithm names in sorted order."""
+        return sorted(self._prop_algorithm_registry)
 
     def link_to_vtherm(self, vtherm, plugin_vtherm_entity_id: str):
         """Link the VTherm API to a specific VTherm entity."""
