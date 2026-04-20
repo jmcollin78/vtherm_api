@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vtherm_api"
-version = "0.2.0"
+dynamic = ["version"]
 description = "The API of the Versatile Thermostat integration for Home Assistant"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -30,6 +30,9 @@ dev = [
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+
+[tool.setuptools.dynamic]
+version = {attr = "vtherm_api.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
