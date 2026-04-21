@@ -34,8 +34,9 @@ class FakePropAlgorithmHandler(InterfacePropAlgorithmHandler):
     async def control_heating(self, timestamp=None, force: bool = False) -> None:
         """Run one control iteration."""
 
-    async def on_state_changed(self) -> None:
+    async def on_state_changed(self, changed: bool) -> None:
         """React to a thermostat state change."""
+        del changed
 
     def on_scheduler_ready(self, scheduler: InterfaceCycleScheduler) -> None:
         """Bind the handler to the scheduler."""
