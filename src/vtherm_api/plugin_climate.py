@@ -5,6 +5,7 @@ from typing import Any
 
 from homeassistant.const import ATTR_ENTITY_ID
 from homeassistant.core import Event, HomeAssistant, Context, ServiceResponse
+from homeassistant.components.climate import DOMAIN as CLIMATE_DOMAIN
 
 from .const import EventType, DOMAIN
 from .log_collector import get_vtherm_logger
@@ -147,8 +148,8 @@ class PluginClimate:
 
         try:
             target = {ATTR_ENTITY_ID: self._linked_vtherm.entity_id}
-            response: ServiceResponse = await self._hass.services.async_call(DOMAIN, action_name, action_data, blocking, context, target, return_response)
+            response: ServiceResponse = await self._hass.services.async_call(CLIMATE_DOMAIN, action_name, action_data, blocking, context, target, return_response)
             return response
         except Exception as err:  # pylint: disable=broad-except
             _LOGGER.error(
-                "%s - Error calling service %s.%s: %s. The underlying will not change its state.", self, DOMAIN, action_name, err)
+                "%s - Error calling service %s.%s: %s. The underlying will not change its state.", self, CLIMATE_DOMAIN, action_name, err)

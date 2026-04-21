@@ -5,8 +5,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.const import ATTR_ENTITY_ID
+from homeassistant.components.climate.const import DOMAIN as CLIMATE_DOMAIN
 
-from src.vtherm_api.const import DOMAIN, EventType
+from src.vtherm_api.const import EventType
 from src.vtherm_api.plugin_climate import PluginClimate
 
 
@@ -165,7 +166,7 @@ async def test_call_linked_vtherm_action_calls_requested_action(
     )
 
     hass.services.async_call.assert_awaited_once_with(
-        DOMAIN,
+        CLIMATE_DOMAIN,
         action_name,
         action_data,
         False,
@@ -196,7 +197,7 @@ async def test_call_linked_vtherm_action_passes_optional_arguments() -> None:
     )
 
     hass.services.async_call.assert_awaited_once_with(
-        DOMAIN,
+        CLIMATE_DOMAIN,
         "set_hvac_mode",
         action_data,
         True,

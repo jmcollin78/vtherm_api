@@ -11,7 +11,7 @@ from .interfaces import (
 from .plugin_climate import PluginClimate
 from .vtherm_api import VThermAPI
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 __all__ = [
     "InterfaceCycleScheduler",
