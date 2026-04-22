@@ -92,7 +92,7 @@ handler.async_startup()
     |   handler.control_heating(timestamp, force)
     |
     +-- when thermostat state changes:
-    |   handler.on_state_changed()
+    |   handler.on_state_changed(changed)
     |
     +-- when scheduler becomes available:
     |   handler.on_scheduler_ready(scheduler)

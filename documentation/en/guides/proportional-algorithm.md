@@ -41,7 +41,7 @@ class MyAlgorithmHandler:
         return None
 
     async def async_startup(self) -> None:
-        await self.on_state_changed()
+        await self.on_state_changed(True)
 
     def remove(self) -> None:
         self._stop_timer()
@@ -83,7 +83,8 @@ class MyAlgorithmHandler:
         t.update_custom_attributes()
         t.async_write_ha_state()
 
-    async def on_state_changed(self) -> None:
+    async def on_state_changed(self, changed: bool) -> None:
+        del changed
         t = self._thermostat
         if t.vtherm_hvac_mode == "off":
             self._stop_timer()

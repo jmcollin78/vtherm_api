@@ -244,7 +244,7 @@ Lifecycle contract for one proportional algorithm handler instance.
 | `async_startup()` | `async () -> None` | Called after VTherm startup |
 | `remove()` | `() -> None` | Cleanup resources |
 | `control_heating(timestamp, force)` | `async (datetime | None, bool) -> None` | Run one control iteration |
-| `on_state_changed()` | `async () -> None` | React to thermostat state changes |
+| `on_state_changed(changed)` | `async (bool) -> None` | React to thermostat state refreshes and state changes |
 | `on_scheduler_ready(scheduler)` | `(InterfaceCycleScheduler) -> None` | Receive scheduler |
 | `should_publish_intermediate()` | `() -> bool` | Allow intermediate state publication |
 

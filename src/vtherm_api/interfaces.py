@@ -252,7 +252,7 @@ class InterfacePropAlgorithmHandler(Protocol):
         """Execute one proportional control iteration."""
         ...
 
-    async def on_state_changed(self) -> None:
+    async def on_state_changed(self, changed: bool) -> None:
         """React to a thermostat state change."""
         ...
 

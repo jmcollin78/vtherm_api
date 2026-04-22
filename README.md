@@ -198,7 +198,7 @@ class SmartPIHandler(InterfacePropAlgorithmHandler):
     async def control_heating(self, timestamp=None, force: bool = False) -> None:
         return None
 
-    async def on_state_changed(self) -> None:
+    async def on_state_changed(self, changed: bool) -> None:
         return None
 
     def on_scheduler_ready(self, scheduler) -> None:
