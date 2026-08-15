@@ -370,6 +370,60 @@ class FakeVTherm(InterfaceThermostat):
 
 This is the same registration flow used in the test suite to validate manager instantiation and registration.
 
+## Registering a FeatureManager factory (per-thermostat)
+
+`api.register_manager(...)` attaches a single manager instance to the thermostats that already exist. When a feature must be instantiated **once per thermostat** (including thermostats built later), and optionally restricted to a given scope (for example `over_climate`), use the **feature manager factory** registry instead.
+
+This mechanism mirrors the proportional algorithm factory: the plugin registers a factory, and the core iterates over the registered factories when building each thermostat, calling `factory.create(runtime)` for every eligible thermostat.
+
+```python
+from typing import Any
+
+from vtherm_api.interfaces import (
+    InterfaceFeatureManager,
+    InterfaceFeatureManagerFactory,
+    InterfaceThermostatRuntime,
+)
+from vtherm_api.vtherm_api import VThermAPI
+
+
+class AutoFanFeatureManager(InterfaceFeatureManager):
+    def __init__(self, thermostat: InterfaceThermostatRuntime) -> None:
+        self._thermostat = thermostat
+
+    # ... implement the InterfaceFeatureManager contract ...
+
+
+class AutoFanManagerFactory(InterfaceFeatureManagerFactory):
+    @property
+    def name(self) -> str:
+        return "auto_fan"
+
+    def supports(self, thermostat: InterfaceThermostatRuntime) -> bool:
+        # Restrict the manager to thermostats exposing underlying fan modes.
+        return thermostat.underlying_fan_modes is not None
+
+    def create(
+        self,
+        thermostat: InterfaceThermostatRuntime,
+    ) -> InterfaceFeatureManager:
+        return AutoFanFeatureManager(thermostat)
+
+
+def register_plugin(hass: Any) -> None:
+    api = VThermAPI.get_vtherm_api(hass)
+    if api is not None:
+        api.register_feature_manager(AutoFanManagerFactory())
+```
+
+The registry exposes:
+
+- `register_feature_manager(factory)` / `unregister_feature_manager(name)`
+- `get_feature_manager(name)` / `list_feature_managers()`
+- `get_feature_manager_factories()` — used by the core to iterate over the registered factories when constructing a thermostat.
+
+To drive an underlying climate fan from the manager, `InterfaceThermostatRuntime` exposes `regulated_target_temperature`, `underlying_fan_modes`, and `async_set_underlying_fan_mode(fan_mode)`.
+
 ## Using PluginClimate
 
 `PluginClimate` is an event listener and service forwarder bound to one linked thermostat.

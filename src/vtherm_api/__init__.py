@@ -3,6 +3,7 @@
 from .interfaces import (
     InterfaceCycleScheduler,
     InterfaceFeatureManager,
+    InterfaceFeatureManagerFactory,
     InterfacePropAlgorithmFactory,
     InterfacePropAlgorithmHandler,
     InterfaceThermostat,
@@ -11,11 +12,12 @@ from .interfaces import (
 from .plugin_climate import PluginClimate
 from .vtherm_api import VThermAPI
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "InterfaceCycleScheduler",
     "InterfaceFeatureManager",
+    "InterfaceFeatureManagerFactory",
     "InterfacePropAlgorithmFactory",
     "InterfacePropAlgorithmHandler",
     "InterfaceThermostat",

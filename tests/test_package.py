@@ -23,4 +23,6 @@ def test_package_exports_algorithm_plugin_api() -> None:
     assert vtherm_api.InterfaceCycleScheduler is not None
     assert vtherm_api.InterfacePropAlgorithmHandler is not None
     assert vtherm_api.InterfacePropAlgorithmFactory is not None
+    assert vtherm_api.InterfaceFeatureManager is not None
+    assert vtherm_api.InterfaceFeatureManagerFactory is not None
     assert vtherm_api.__version__ == _package_metadata_version()
