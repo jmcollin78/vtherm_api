@@ -7,25 +7,33 @@ name = "vtherm_api"
 dynamic = ["version"]
 description = "The API of the Versatile Thermostat integration for Home Assistant"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 license = "MIT"
 authors = [
     { name = "Jean-Marc Collin" },
 ]
 keywords = ["home-assistant", "thermostat", "hvac", "versatile-thermostat"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Topic :: Home Automation",
 ]
 dependencies = []
 
+[project.urls]
+Repository = "https://github.com/jmcollin78/vtherm_api"
+Documentation = "https://github.com/jmcollin78/vtherm_api"
+"Bug Tracker" = "https://github.com/jmcollin78/vtherm_api/issues"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio",
+    "build",
+    "twine",
 ]
 
 [tool.setuptools]

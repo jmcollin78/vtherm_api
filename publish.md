@@ -2,6 +2,7 @@ Pour publier cette librairie sur les dépôts Python, le flux standard est : con
 
 La procédure concrète :
 
+0. Mettre à jour __init__.py avec la version `__version__`
 1. Créer un compte sur PyPI et TestPyPI.
 2. Générer un token API sur chaque site.
 3. Installer les outils de publication dans votre environnement :
@@ -24,9 +25,9 @@ Vous obtiendrez en général un sdist et une wheel dans dist/.
 8. Si tout est bon, publier sur PyPI :
     > `python -m twine upload dist/*`
 
-Points spécifiques à ce dépôt avant publication :
+Points spécifiques configurés sur ce dépôt :
 
-La version est dupliquée entre pyproject.toml et __init__.py. Il vaut mieux n’avoir qu’une seule source de vérité, sinon vous finirez avec une incohérence de release.
-Le champ requires-python est fixé à 3.14+ dans pyproject.toml. PyPI l’acceptera, mais cela limitera fortement l’installation. Si ce n’est pas intentionnel, baissez-le à la vraie version minimale supportée.
-Il manque des métadonnées utiles pour PyPI, par exemple project.urls pour le dépôt, la documentation et l’issue tracker. Ce n’est pas bloquant, mais c’est préférable.
-build et twine ne sont pas déclarés dans les dépendances de dev. Ce n’est pas obligatoire, mais pratique pour fiabiliser la publication.
+- **Version dynamique** : La version source est définie dans [src/vtherm_api/__init__.py](src/vtherm_api/__init__.py) (`__version__ = "0.4.0b1"`). `pyproject.toml` la lit dynamiquement.
+- **Support Python** : `requires-python` est configuré à `>=3.13`.
+- **Métadonnées PyPI** : `project.urls` est renseigné (Repository, Documentation, Bug Tracker).
+- **Dépendances de dev** : `build` et `twine` sont inclus dans `requirements-dev.txt` et `pyproject.toml`.
