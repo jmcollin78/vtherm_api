@@ -14,18 +14,39 @@ The package is designed for Home Assistant integration code, not as a standalone
 
 ## Table of contents
 
-- [What this package solves](#what-this-package-solves)
-- [Requirements](#requirements)
-- [Installation for development](#installation-for-development)
-- [Architecture](#architecture)
-- [Public imports](#public-imports)
-- [Using VThermAPI](#using-vthermapi)
-- [Registering a proportional algorithm plugin](#registering-a-proportional-algorithm-plugin)
-- [Creating a FeatureManager](#creating-a-featuremanager)
-- [Using PluginClimate](#using-pluginclimate)
-- [Supported VTherm events](#supported-vtherm-events)
-- [Practical patterns](#practical-patterns)
-- [Testing your integration](#testing-your-integration)
+- [vtherm\_api](#vtherm_api)
+  - [Table of contents](#table-of-contents)
+  - [What this package solves](#what-this-package-solves)
+  - [Requirements](#requirements)
+  - [Installation for development](#installation-for-development)
+  - [Architecture](#architecture)
+  - [Public imports](#public-imports)
+  - [Using VThermAPI](#using-vthermapi)
+    - [Main responsibilities](#main-responsibilities)
+    - [Create or retrieve the singleton](#create-or-retrieve-the-singleton)
+    - [Reset the singleton](#reset-the-singleton)
+  - [Registering a proportional algorithm plugin](#registering-a-proportional-algorithm-plugin)
+    - [Link a plugin climate through the API helper](#link-a-plugin-climate-through-the-api-helper)
+  - [Creating a FeatureManager](#creating-a-featuremanager)
+    - [Example: OddMinuteFeatureManager](#example-oddminutefeaturemanager)
+    - [Register the manager through VThermAPI](#register-the-manager-through-vthermapi)
+    - [Minimal thermostat side contract](#minimal-thermostat-side-contract)
+  - [Registering a FeatureManager factory (per-thermostat)](#registering-a-featuremanager-factory-per-thermostat)
+  - [Using PluginClimate](#using-pluginclimate)
+    - [What happens when you link it](#what-happens-when-you-link-it)
+    - [Basic usage](#basic-usage)
+    - [Subclass PluginClimate to react to events](#subclass-pluginclimate-to-react-to-events)
+    - [Simulate a VTherm event](#simulate-a-vtherm-event)
+    - [Forward an action to the linked thermostat](#forward-an-action-to-the-linked-thermostat)
+    - [Remove listeners on unload](#remove-listeners-on-unload)
+  - [Supported VTherm events](#supported-vtherm-events)
+  - [Practical patterns](#practical-patterns)
+    - [Pattern 1: register a proportional algorithm factory](#pattern-1-register-a-proportional-algorithm-factory)
+    - [Pattern 2: build a plugin that mirrors temperature updates](#pattern-2-build-a-plugin-that-mirrors-temperature-updates)
+    - [Pattern 3: replicate another climate entity to a target VTherm](#pattern-3-replicate-another-climate-entity-to-a-target-vtherm)
+    - [Pattern 4: expose a command through your own integration code](#pattern-4-expose-a-command-through-your-own-integration-code)
+  - [Testing your integration](#testing-your-integration)
+  - [Summary](#summary)
 
 ## What this package solves
 
@@ -100,6 +121,8 @@ Use these imports in integration code:
 
 ```python
 from vtherm_api import (
+    InterfaceFeatureManager,
+    InterfaceFeatureManagerFactory,
     InterfacePropAlgorithmFactory,
     InterfacePropAlgorithmHandler,
     InterfaceThermostatRuntime,
@@ -369,6 +392,60 @@ class FakeVTherm(InterfaceThermostat):
 ```
 
 This is the same registration flow used in the test suite to validate manager instantiation and registration.
+
+## Registering a FeatureManager factory (per-thermostat)
+
+`api.register_manager(...)` attaches a single manager instance to the thermostats that already exist. When a feature must be instantiated **once per thermostat** (including thermostats built later), and optionally restricted to a given scope (for example `over_climate`), use the **feature manager factory** registry instead.
+
+This mechanism mirrors the proportional algorithm factory: the plugin registers a factory, and the core iterates over the registered factories when building each thermostat, calling `factory.create(runtime)` for every eligible thermostat.
+
+```python
+from typing import Any
+
+from vtherm_api.interfaces import (
+    InterfaceFeatureManager,
+    InterfaceFeatureManagerFactory,
+    InterfaceThermostatRuntime,
+)
+from vtherm_api.vtherm_api import VThermAPI
+
+
+class AutoFanFeatureManager(InterfaceFeatureManager):
+    def __init__(self, thermostat: InterfaceThermostatRuntime) -> None:
+        self._thermostat = thermostat
+
+    # ... implement the InterfaceFeatureManager contract ...
+
+
+class AutoFanManagerFactory(InterfaceFeatureManagerFactory):
+    @property
+    def name(self) -> str:
+        return "auto_fan"
+
+    def supports(self, thermostat: InterfaceThermostatRuntime) -> bool:
+        # Restrict the manager to thermostats exposing underlying fan modes.
+        return thermostat.underlying_fan_modes is not None
+
+    def create(
+        self,
+        thermostat: InterfaceThermostatRuntime,
+    ) -> InterfaceFeatureManager:
+        return AutoFanFeatureManager(thermostat)
+
+
+def register_plugin(hass: Any) -> None:
+    api = VThermAPI.get_vtherm_api(hass)
+    if api is not None:
+        api.register_feature_manager(AutoFanManagerFactory())
+```
+
+The registry exposes:
+
+- `register_feature_manager(factory)` / `unregister_feature_manager(name)`
+- `get_feature_manager(name)` / `list_feature_managers()`
+- `get_feature_manager_factories()` — used by the core to iterate over the registered factories when constructing a thermostat.
+
+To drive an underlying climate fan from the manager, `InterfaceThermostatRuntime` exposes `regulated_target_temperature`, `underlying_fan_modes`, and `async_set_underlying_fan_mode(fan_mode)`.
 
 ## Using PluginClimate
 

@@ -155,6 +155,21 @@ def get_vtherm_logger(name: str) -> VThermLogger:
     return vl
 
 
+def write_event_log(logger: logging.Logger, vtherm: object, message: str) -> None:
+    """Write a highlighted "NEW EVENT" entry for a thermostat into the logs.
+
+    This mirrors the historical ``write_event_log`` helper of the Versatile
+    Thermostat core so that plugins can emit the same recognizable event lines
+    that are captured by the in-memory collector.
+    """
+    logger.info(
+        "%s - ---------------------> NEW EVENT: %s "
+        "--------------------------------------------------------",
+        vtherm,
+        message,
+    )
+
+
 @dataclass(slots=True)
 class VThermLogEntry:
     """A single log entry stored in the ring buffer."""

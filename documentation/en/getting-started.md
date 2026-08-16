@@ -10,7 +10,7 @@ Add `vtherm_api` as a dependency in your integration's `manifest.json`:
 {
   "domain": "my_vtherm_plugin",
   "name": "My VTherm Plugin",
-  "requirements": ["vtherm_api>=0.2.0"],
+  "requirements": ["vtherm_api>=0.4.0"],
   "dependencies": ["versatile_thermostat"]
 }
 ```
@@ -45,6 +45,7 @@ All main classes and interfaces are exported from the package root:
 from vtherm_api import (
     InterfaceCycleScheduler,
     InterfaceFeatureManager,
+    InterfaceFeatureManagerFactory,
     InterfacePropAlgorithmFactory,
     InterfacePropAlgorithmHandler,
     InterfaceThermostat,
@@ -84,7 +85,8 @@ async def async_unload_entry(hass, entry) -> bool:
 - `api.hass`: access to the Home Assistant runtime
 - `api.now`: timezone-aware datetime from Home Assistant
 - `api.register_prop_algorithm(...)`: register a proportional algorithm factory
-- `api.register_manager(...)`: register a feature manager across VTherm entities
+- `api.register_manager(...)`: register a single feature manager instance across existing VTherm entities
+- `api.register_feature_manager(...)`: register a feature manager factory instantiated once per eligible thermostat
 
 ## Real-world usage patterns
 

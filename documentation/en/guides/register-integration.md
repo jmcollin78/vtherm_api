@@ -11,7 +11,8 @@ Make your custom integration aware of the VTherm runtime by creating or retrievi
 - holds a reference to the `HomeAssistant` object
 - exposes `api.now` as a timezone-aware clock
 - manages the proportional algorithm registry
-- exposes `register_manager(...)` for feature manager registration
+- manages the feature manager factory registry
+- exposes `register_manager(...)` for single-instance feature manager registration
 
 Unlike older drafts of this documentation, the current API does not expose `add_entry(...)` or `remove_entry(...)`.
 
@@ -73,6 +74,28 @@ async def async_setup_entry(hass, entry) -> bool:
     return True
 ```
 
+### Register a feature manager factory (per-thermostat)
+
+When the feature must be instantiated once per thermostat, register a factory instead of a single instance:
+
+```python
+from vtherm_api import VThermAPI
+
+from .factory import AutoFanManagerFactory
+
+
+async def async_setup_entry(hass, entry) -> bool:
+    api = VThermAPI.get_vtherm_api(hass)
+    if api is None:
+        return False
+
+    factory = AutoFanManagerFactory()
+    if api.get_feature_manager(factory.name) is None:
+        api.register_feature_manager(factory)
+
+    return True
+```
+
 ## Step 3: Unload
 
 There is no explicit unregister call for the singleton itself.
@@ -83,6 +106,7 @@ async def async_unload_entry(hass, entry) -> bool:
     api = VThermAPI.get_vtherm_api()
     if api is not None:
         api.unregister_prop_algorithm("my_algorithm")
+        api.unregister_feature_manager("auto_fan")
     return True
 ```
 

@@ -9,6 +9,7 @@ from .log_collector import get_vtherm_logger
 from .plugin_climate import PluginClimate
 from .interfaces import (
     InterfaceFeatureManager,
+    InterfaceFeatureManagerFactory,
     InterfacePropAlgorithmFactory,
     InterfaceThermostat,
 )
@@ -27,7 +28,10 @@ class VThermAPI:
     def __init__(self) -> None:
         """Initialize the VThermAPI instance."""
         self._now: datetime = None
-        self._prop_algorithm_registry: dict[str, InterfacePropAlgorithmFactory] = {}
+        self._prop_algorithm_registry: dict[str,
+                                            InterfacePropAlgorithmFactory] = {}
+        self._feature_manager_registry: dict[str,
+                                             InterfaceFeatureManagerFactory] = {}
 
     @classmethod
     def get_vtherm_api(cls, hass=None):
@@ -59,6 +63,7 @@ class VThermAPI:
         api = cls._hass.data.get(DOMAIN, {}).get(VTHERM_API_NAME)
         if api is not None:
             api._prop_algorithm_registry.clear()  # pylint: disable=protected-access
+            api._feature_manager_registry.clear()  # pylint: disable=protected-access
 
         # Remove the API instance from hass.data
         if DOMAIN in cls._hass.data:
@@ -90,7 +95,8 @@ class VThermAPI:
         """Register or replace a proportional algorithm factory."""
         name = factory.name.strip()
         if not name:
-            raise ValueError("The proportional algorithm factory name cannot be empty")
+            raise ValueError(
+                "The proportional algorithm factory name cannot be empty")
 
         self._prop_algorithm_registry[name] = factory
 
@@ -105,6 +111,38 @@ class VThermAPI:
     def list_prop_algorithms(self) -> list[str]:
         """Return the registered proportional algorithm names in sorted order."""
         return sorted(self._prop_algorithm_registry)
+
+    def register_feature_manager(self, factory: InterfaceFeatureManagerFactory) -> None:
+        """Register or replace a feature manager factory."""
+        name = factory.name.strip()
+        if not name:
+            raise ValueError(
+                "The feature manager factory name cannot be empty")
+
+        self._feature_manager_registry[name] = factory
+
+    def unregister_feature_manager(self, name: str) -> None:
+        """Remove a feature manager factory from the registry."""
+        self._feature_manager_registry.pop(name, None)
+
+    def get_feature_manager(self, name: str) -> InterfaceFeatureManagerFactory | None:
+        """Return the registered feature manager factory for a name."""
+        return self._feature_manager_registry.get(name)
+
+    def list_feature_managers(self) -> list[str]:
+        """Return the registered feature manager names in sorted order."""
+        return sorted(self._feature_manager_registry)
+
+    def get_feature_manager_factories(self) -> list[InterfaceFeatureManagerFactory]:
+        """Return the registered feature manager factories.
+
+        The core iterates over these factories when building a thermostat to
+        instantiate one feature manager per eligible thermostat.
+        """
+        return [
+            self._feature_manager_registry[name]
+            for name in sorted(self._feature_manager_registry)
+        ]
 
     def link_to_vtherm(self, vtherm, plugin_vtherm_entity_id: str):
         """Link the VTherm API to a specific VTherm entity."""

@@ -9,6 +9,7 @@ Home Assistant runtime
     |     - access to hass
     |     - access to now
     |     - proportional algorithm registry
+    |     - feature manager factory registry
     |     - manager registration helper
     |
     +-- Versatile Thermostat climate entities
@@ -100,6 +101,36 @@ handler.async_startup()
     +-- on unload:
         handler.remove()
 ```
+
+## Feature manager factory lifecycle
+
+The feature manager factory registry mirrors the proportional algorithm registry, but produces `InterfaceFeatureManager` instances instead of algorithm handlers. It is used when a feature must be instantiated **once per thermostat** (including thermostats created later) and optionally restricted to a scope such as `over_climate`.
+
+```text
+Integration setup
+    |
+    v
+api.register_feature_manager(factory)
+    |
+    v
+VTherm builds a thermostat
+    |
+    v
+for factory in api.get_feature_manager_factories():
+    |
+    +-- factory.supports(thermostat) is False -> skip this thermostat
+    +-- factory.supports(thermostat) is True
+            |
+            v
+        manager = factory.create(thermostat)
+        thermostat.register_manager(manager)
+            |
+            +-- driven by the existing manager cycle:
+                post_init / start_listening / refresh_state /
+                restore_state / stop_listening
+```
+
+To drive an underlying climate fan, the manager reads `regulated_target_temperature` and `underlying_fan_modes` from `InterfaceThermostatRuntime` and calls `async_set_underlying_fan_mode(fan_mode)`.
 
 ## Real-world mappings
 

@@ -17,16 +17,16 @@ Get or create the singleton instance.
 
 #### `VThermAPI.reset_vtherm_api() -> None`
 
-Reset the singleton and clear the proportional algorithm registry.
+Reset the singleton and clear both the proportional algorithm registry and the feature manager factory registry.
 Mainly useful in tests.
 
 ### Properties
 
-| Property | Type | Description |
-|---|---|---|
-| `hass` | `HomeAssistant` | Home Assistant instance associated with the singleton |
-| `name` | `str` | Always `"VThermAPI"` |
-| `now` | `datetime` | Timezone-aware datetime from Home Assistant |
+| Property | Type            | Description                                           |
+| -------- | --------------- | ----------------------------------------------------- |
+| `hass`   | `HomeAssistant` | Home Assistant instance associated with the singleton |
+| `name`   | `str`           | Always `"VThermAPI"`                                  |
+| `now`    | `datetime`      | Timezone-aware datetime from Home Assistant           |
 
 ### Instance methods
 
@@ -45,6 +45,31 @@ Return the factory registered for `name`, or `None`.
 #### `list_prop_algorithms() -> list[str]`
 
 Return registered factory names in sorted order.
+
+#### `register_feature_manager(factory: InterfaceFeatureManagerFactory) -> None`
+
+Register or replace a feature manager factory by name.
+
+Unlike `register_manager(...)`, which attaches a single manager instance to the thermostats that already exist, this registry lets the core instantiate **one manager per thermostat** by calling `factory.create(runtime)` for every eligible thermostat (including thermostats built later).
+
+Raises `ValueError` if `factory.name` is empty.
+
+#### `unregister_feature_manager(name: str) -> None`
+
+Remove a feature manager factory by name.
+
+#### `get_feature_manager(name: str) -> InterfaceFeatureManagerFactory | None`
+
+Return the feature manager factory registered for `name`, or `None`.
+
+#### `list_feature_managers() -> list[str]`
+
+Return registered feature manager factory names in sorted order.
+
+#### `get_feature_manager_factories() -> list[InterfaceFeatureManagerFactory]`
+
+Return the registered feature manager factories, sorted by name.
+The core iterates over these factories when building a thermostat to instantiate one feature manager per eligible thermostat.
 
 #### `link_to_vtherm(vtherm, plugin_vtherm_entity_id: str) -> None`
 
@@ -122,17 +147,17 @@ Useful in tests or when invoking the dispatcher manually.
 
 Override only the handlers you need in a subclass:
 
-| Method | Triggered by |
-|---|---|
-| `handle_safety_event(event)` | `EventType.SAFETY_EVENT` |
-| `handle_power_event(event)` | `EventType.POWER_EVENT` |
-| `handle_temperature_event(event)` | `EventType.TEMPERATURE_EVENT` |
-| `handle_hvac_mode_event(event)` | `EventType.HVAC_MODE_EVENT` |
-| `handle_central_boiler_event(event)` | `EventType.CENTRAL_BOILER_EVENT` |
-| `handle_preset_event(event)` | `EventType.PRESET_EVENT` |
-| `handle_window_auto_event(event)` | `EventType.WINDOW_AUTO_EVENT` |
+| Method                                | Triggered by                      |
+| ------------------------------------- | --------------------------------- |
+| `handle_safety_event(event)`          | `EventType.SAFETY_EVENT`          |
+| `handle_power_event(event)`           | `EventType.POWER_EVENT`           |
+| `handle_temperature_event(event)`     | `EventType.TEMPERATURE_EVENT`     |
+| `handle_hvac_mode_event(event)`       | `EventType.HVAC_MODE_EVENT`       |
+| `handle_central_boiler_event(event)`  | `EventType.CENTRAL_BOILER_EVENT`  |
+| `handle_preset_event(event)`          | `EventType.PRESET_EVENT`          |
+| `handle_window_auto_event(event)`     | `EventType.WINDOW_AUTO_EVENT`     |
 | `handle_auto_start_stop_event(event)` | `EventType.AUTO_START_STOP_EVENT` |
-| `handle_timed_preset_event(event)` | `EventType.TIMED_PRESET_EVENT` |
+| `handle_timed_preset_event(event)`    | `EventType.TIMED_PRESET_EVENT`    |
 | `handle_heating_failure_event(event)` | `EventType.HEATING_FAILURE_EVENT` |
 
 ### Action forwarding
@@ -167,29 +192,29 @@ All interfaces are defined as runtime-checkable `Protocol` classes in `vtherm_ap
 
 Minimal contract expected of a VTherm thermostat entity.
 
-| Member | Type | Description |
-|---|---|---|
-| `name` | `str` property | Human-readable name |
-| `unique_id` | `str` property | Unique identifier |
-| `device_info` | `DeviceInfo | None` property | HA device info |
-| `register_manager(manager)` | method | Accepts a feature manager |
+| Member                      | Type           | Description               |
+| --------------------------- | -------------- | ------------------------- |
+| `name`                      | `str` property | Human-readable name       |
+| `unique_id`                 | `str` property | Unique identifier         |
+| `device_info`               | `DeviceInfo    | None` property            | HA device info |
+| `register_manager(manager)` | method         | Accepts a feature manager |
 
 ### InterfaceFeatureManager
 
 Contract for a feature manager registered through `VThermAPI.register_manager(...)`.
 
-| Member | Signature | Description |
-|---|---|---|
-| `name` | `str` property | Logical manager name |
-| `hass` | `HomeAssistant` property | Home Assistant instance |
-| `is_configured` | `bool` property | Whether the manager is configured |
-| `is_detected` | `bool` property | Whether the condition is currently detected |
-| `post_init(entry_infos)` | `(dict) -> None` | Receive merged config |
-| `start_listening(force)` | `async (bool) -> None` | Start subscriptions |
-| `stop_listening()` | `() -> bool | None` | Stop subscriptions |
-| `refresh_state()` | `async () -> bool` | Refresh internal state |
-| `restore_state(old_state)` | `(Any) -> None` | Restore old state |
-| `add_listener(func)` | `(CALLBACK_TYPE) -> None` | Register cleanup callbacks |
+| Member                     | Signature                 | Description                                 |
+| -------------------------- | ------------------------- | ------------------------------------------- |
+| `name`                     | `str` property            | Logical manager name                        |
+| `hass`                     | `HomeAssistant` property  | Home Assistant instance                     |
+| `is_configured`            | `bool` property           | Whether the manager is configured           |
+| `is_detected`              | `bool` property           | Whether the condition is currently detected |
+| `post_init(entry_infos)`   | `(dict) -> None`          | Receive merged config                       |
+| `start_listening(force)`   | `async (bool) -> None`    | Start subscriptions                         |
+| `stop_listening()`         | `() -> bool               | None`                                       | Stop subscriptions |
+| `refresh_state()`          | `async () -> bool`        | Refresh internal state                      |
+| `restore_state(old_state)` | `(Any) -> None`           | Restore old state                           |
+| `add_listener(func)`       | `(CALLBACK_TYPE) -> None` | Register cleanup callbacks                  |
 
 ### InterfaceThermostatRuntime
 
@@ -197,77 +222,90 @@ Runtime view exposed to proportional algorithm handlers.
 
 #### Writable attributes
 
-| Attribute | Type | Description |
-|---|---|---|
-| `prop_algorithm` | `Any` | Current algorithm object |
-| `minimal_activation_delay` | `int` | Minimum activation delay |
+| Attribute                    | Type  | Description                |
+| ---------------------------- | ----- | -------------------------- |
+| `prop_algorithm`             | `Any` | Current algorithm object   |
+| `minimal_activation_delay`   | `int` | Minimum activation delay   |
 | `minimal_deactivation_delay` | `int` | Minimum deactivation delay |
 
 #### Read-only properties
 
-| Property | Type | Description |
-|---|---|---|
-| `hass` | `HomeAssistant` | Home Assistant instance |
-| `entity_id` | `str` | Entity id |
-| `name` | `str` | Thermostat name |
-| `unique_id` | `str` | Unique id |
-| `entry_infos` | `ConfigData | dict` | Merged thermostat config |
-| `current_temperature` | `float | None` | Room temperature |
-| `current_outdoor_temperature` | `float | None` | Outdoor temperature |
-| `target_temperature` | `float | None` | Target temperature |
-| `last_temperature_slope` | `float | None` | Latest temperature slope |
-| `vtherm_hvac_mode` | `str | None` | VTherm HVAC mode |
-| `hvac_action` | `str | None` | HVAC action |
-| `hvac_off_reason` | `str | None` | HVAC off reason |
-| `cycle_min` | `int` | Cycle length in minutes |
-| `cycle_scheduler` | `InterfaceCycleScheduler | None` | Cycle scheduler |
-| `is_device_active` | `bool` | Whether the underlying device is on |
-| `is_overpowering_detected` | `bool` | Whether power shedding is active |
+| Property                       | Type                     | Description                         |
+| ------------------------------ | ------------------------ | ----------------------------------- |
+| `hass`                         | `HomeAssistant`          | Home Assistant instance             |
+| `entity_id`                    | `str`                    | Entity id                           |
+| `name`                         | `str`                    | Thermostat name                     |
+| `unique_id`                    | `str`                    | Unique id                           |
+| `entry_infos`                  | `ConfigData              | dict`                               | Merged thermostat config                                  |
+| `current_temperature`          | `float                   | None`                               | Room temperature                                          |
+| `current_outdoor_temperature`  | `float                   | None`                               | Outdoor temperature                                       |
+| `target_temperature`           | `float                   | None`                               | Target temperature                                        |
+| `regulated_target_temperature` | `float                   | None`                               | Regulated target temperature used to drive the underlying |
+| `last_temperature_slope`       | `float                   | None`                               | Latest temperature slope                                  |
+| `vtherm_hvac_mode`             | `str                     | None`                               | VTherm HVAC mode                                          |
+| `hvac_action`                  | `str                     | None`                               | HVAC action                                               |
+| `hvac_off_reason`              | `str                     | None`                               | HVAC off reason                                           |
+| `cycle_min`                    | `int`                    | Cycle length in minutes             |
+| `cycle_scheduler`              | `InterfaceCycleScheduler | None`                               | Cycle scheduler                                           |
+| `is_device_active`             | `bool`                   | Whether the underlying device is on |
+| `is_overpowering_detected`     | `bool`                   | Whether power shedding is active    |
+| `underlying_fan_modes`         | `list[str]               | None`                               | Fan modes exposed by the underlying climate(s)            |
 
 #### Methods
 
-| Method | Signature | Description |
-|---|---|---|
-| `async_underlying_entity_turn_off()` | `async () -> None` | Turn off the underlying entities |
-| `async_control_heating(timestamp, force)` | `async (datetime | None, bool) -> bool` | Trigger VTherm control |
-| `update_custom_attributes()` | `() -> None` | Refresh custom state attributes |
-| `async_write_ha_state()` | `() -> None` | Publish state to Home Assistant |
+| Method                                    | Signature             | Description                                  |
+| ----------------------------------------- | --------------------- | -------------------------------------------- |
+| `async_set_underlying_fan_mode(fan_mode)` | `async (str) -> None` | Send a fan mode to the underlying climate(s) |
+| `async_underlying_entity_turn_off()`      | `async () -> None`    | Turn off the underlying entities             |
+| `async_control_heating(timestamp, force)` | `async (datetime      | None, bool) -> bool`                         | Trigger VTherm control |
+| `update_custom_attributes()`              | `() -> None`          | Refresh custom state attributes              |
+| `async_write_ha_state()`                  | `() -> None`          | Publish state to Home Assistant              |
 
 ### InterfacePropAlgorithmHandler
 
 Lifecycle contract for one proportional algorithm handler instance.
 
-| Method | Signature | Description |
-|---|---|---|
-| `init_algorithm()` | `() -> None` | Initialize algorithm state |
-| `async_added_to_hass()` | `async () -> None` | Called when entity is added to HA |
-| `async_startup()` | `async () -> None` | Called after VTherm startup |
-| `remove()` | `() -> None` | Cleanup resources |
-| `control_heating(timestamp, force)` | `async (datetime | None, bool) -> None` | Run one control iteration |
-| `on_state_changed(changed)` | `async (bool) -> None` | React to thermostat state refreshes and state changes |
-| `on_scheduler_ready(scheduler)` | `(InterfaceCycleScheduler) -> None` | Receive scheduler |
-| `should_publish_intermediate()` | `() -> bool` | Allow intermediate state publication |
+| Method                              | Signature                           | Description                                           |
+| ----------------------------------- | ----------------------------------- | ----------------------------------------------------- |
+| `init_algorithm()`                  | `() -> None`                        | Initialize algorithm state                            |
+| `async_added_to_hass()`             | `async () -> None`                  | Called when entity is added to HA                     |
+| `async_startup()`                   | `async () -> None`                  | Called after VTherm startup                           |
+| `remove()`                          | `() -> None`                        | Cleanup resources                                     |
+| `control_heating(timestamp, force)` | `async (datetime                    | None, bool) -> None`                                  | Run one control iteration |
+| `on_state_changed(changed)`         | `async (bool) -> None`              | React to thermostat state refreshes and state changes |
+| `on_scheduler_ready(scheduler)`     | `(InterfaceCycleScheduler) -> None` | Receive scheduler                                     |
+| `should_publish_intermediate()`     | `() -> bool`                        | Allow intermediate state publication                  |
 
 ### InterfacePropAlgorithmFactory
 
 Factory registered in `VThermAPI`.
 
-| Member | Signature | Description |
-|---|---|---|
-| `name` | `str` property | Unique algorithm identifier |
-| `create(thermostat)` | `(InterfaceThermostatRuntime) -> InterfacePropAlgorithmHandler` | Create a handler |
+| Member               | Signature                                                       | Description                 |
+| -------------------- | --------------------------------------------------------------- | --------------------------- |
+| `name`               | `str` property                                                  | Unique algorithm identifier |
+| `create(thermostat)` | `(InterfaceThermostatRuntime) -> InterfacePropAlgorithmHandler` | Create a handler            |
+
+### InterfaceFeatureManagerFactory
+
+Factory used by external integrations to register a feature manager instantiated **once per thermostat**. Registered through `VThermAPI.register_feature_manager(...)`.
+
+| Member                 | Signature                                                 | Description                                                                                                                                                                  |
+| ---------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                 | `str` property                                            | Feature manager identifier (e.g. `"auto_fan"`)                                                                                                                               |
+| `supports(thermostat)` | `(InterfaceThermostatRuntime) -> bool`                    | Return `True` when the manager is eligible for the thermostat, letting the core skip incompatible thermostats (for example a manager restricted to the `over_climate` scope) |
+| `create(thermostat)`   | `(InterfaceThermostatRuntime) -> InterfaceFeatureManager` | Create a feature manager bound to the runtime thermostat                                                                                                                     |
 
 ### InterfaceCycleScheduler
 
 Contract exposed by the VTherm cycle scheduler.
 
-| Member | Signature | Description |
-|---|---|---|
-| `is_cycle_running` | `bool` property | Whether a cycle is active |
-| `register_cycle_start_callback(callback)` | `(Callable) -> None` | Register cycle start callback |
-| `register_cycle_end_callback(callback)` | `(Callable) -> None` | Register cycle end callback |
-| `start_cycle(hvac_mode, on_percent, force)` | `async (Any, float, bool) -> None` | Start or update a cycle |
-| `cancel_cycle()` | `async () -> None` | Cancel the current cycle |
+| Member                                      | Signature                          | Description                   |
+| ------------------------------------------- | ---------------------------------- | ----------------------------- |
+| `is_cycle_running`                          | `bool` property                    | Whether a cycle is active     |
+| `register_cycle_start_callback(callback)`   | `(Callable) -> None`               | Register cycle start callback |
+| `register_cycle_end_callback(callback)`     | `(Callable) -> None`               | Register cycle end callback   |
+| `start_cycle(hvac_mode, on_percent, force)` | `async (Any, float, bool) -> None` | Start or update a cycle       |
+| `cancel_cycle()`                            | `async () -> None`                 | Cancel the current cycle      |
 
 ---
 
@@ -277,10 +315,10 @@ Contract exposed by the VTherm cycle scheduler.
 
 ### Domain constants
 
-| Constant | Value | Description |
-|---|---|---|
-| `DOMAIN` | `"versatile_thermostat"` | VTherm service domain |
-| `VTHERM_API_NAME` | `"vtherm_api"` | Singleton key in `hass.data[DOMAIN]` |
+| Constant          | Value                    | Description                          |
+| ----------------- | ------------------------ | ------------------------------------ |
+| `DOMAIN`          | `"versatile_thermostat"` | VTherm service domain                |
+| `VTHERM_API_NAME` | `"vtherm_api"`           | Singleton key in `hass.data[DOMAIN]` |
 
 ### EventType enum
 
@@ -297,4 +335,29 @@ EventType.WINDOW_AUTO_EVENT
 EventType.AUTO_START_STOP_EVENT
 EventType.TIMED_PRESET_EVENT
 EventType.HEATING_FAILURE_EVENT
+```
+
+---
+
+## Logging helpers
+
+**Module**: `vtherm_api.log_collector`
+
+#### `get_vtherm_logger(name: str) -> VThermLogger`
+
+Return a `VThermLogger` whose records are also captured by the in-memory ring buffer used by VTherm.
+
+#### `write_event_log(logger: logging.Logger, vtherm: object, message: str) -> None`
+
+Write a highlighted `NEW EVENT` entry for a thermostat into the logs.
+This mirrors the historical `write_event_log` helper of the Versatile Thermostat core so that plugins can emit the same recognizable event lines captured by the in-memory collector.
+
+```python
+import logging
+
+from vtherm_api.log_collector import get_vtherm_logger, write_event_log
+
+_LOGGER = get_vtherm_logger(__name__)
+
+write_event_log(_LOGGER, thermostat, "auto_fan set to high")
 ```

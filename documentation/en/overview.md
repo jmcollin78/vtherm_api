@@ -15,25 +15,26 @@ When you build a custom Home Assistant integration around Versatile Thermostat, 
 3. Listen only to events emitted by those entities (not all thermostats).
 4. Forward actions such as HVAC mode or target temperature changes back to the linked thermostat.
 5. Optionally replace or extend VTherm's proportional control algorithm.
-6. Optionally add a feature manager that extends thermostat behavior.
+6. Optionally add a feature manager that extends thermostat behavior, either as a single instance or instantiated once per thermostat through a factory.
 
 `vtherm_api` provides all of these as reusable building blocks.
 
 ## Main building blocks
 
-| Component | Purpose |
-|---|---|
-| `VThermAPI` | Singleton attached to `hass.data`. Exposes `hass` and `now`, manages the proportional algorithm registry, and registers feature managers. |
-| `PluginClimate` | Event listener + service forwarder bound to one linked VTherm entity. |
-| `InterfacePropAlgorithmFactory` / `InterfacePropAlgorithmHandler` | Protocols for registering a custom proportional algorithm. |
-| `InterfaceFeatureManager` | Protocol for a feature manager that extends thermostat behavior. |
-| `InterfaceThermostat` / `InterfaceThermostatRuntime` | Contracts describing what VTherm exposes to plugins. |
+| Component                                                         | Purpose                                                                                                                                                                            |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VThermAPI`                                                       | Singleton attached to `hass.data`. Exposes `hass` and `now`, manages the proportional algorithm registry and the feature manager factory registry, and registers feature managers. |
+| `PluginClimate`                                                   | Event listener + service forwarder bound to one linked VTherm entity.                                                                                                              |
+| `InterfacePropAlgorithmFactory` / `InterfacePropAlgorithmHandler` | Protocols for registering a custom proportional algorithm.                                                                                                                         |
+| `InterfaceFeatureManager`                                         | Protocol for a feature manager that extends thermostat behavior.                                                                                                                   |
+| `InterfaceFeatureManagerFactory`                                  | Protocol for registering a feature manager instantiated once per eligible thermostat.                                                                                              |
+| `InterfaceThermostat` / `InterfaceThermostatRuntime`              | Contracts describing what VTherm exposes to plugins, including fan access for the underlying climate(s).                                                                           |
 
 ## Package version
 
 ```python
 from vtherm_api import __version__
-print(__version__)  # e.g. "0.2.0"
+print(__version__)  # e.g. "0.4.0b2"
 ```
 
 ## Requirements

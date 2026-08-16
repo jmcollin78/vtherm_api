@@ -133,6 +133,11 @@ class InterfaceThermostatRuntime(Protocol):
         ...
 
     @property
+    def regulated_target_temperature(self) -> float | None:
+        """Return the regulated target temperature used to drive the underlying."""
+        ...
+
+    @property
     def last_temperature_slope(self) -> float | None:
         """Return the latest computed temperature slope."""
         ...
@@ -170,6 +175,15 @@ class InterfaceThermostatRuntime(Protocol):
     @property
     def is_overpowering_detected(self) -> bool:
         """Return True when power shedding is currently active."""
+        ...
+
+    @property
+    def underlying_fan_modes(self) -> list[str] | None:
+        """Return the fan modes exposed by the underlying climate(s)."""
+        ...
+
+    async def async_set_underlying_fan_mode(self, fan_mode: str) -> None:
+        """Send a fan mode to the underlying climate(s)."""
         ...
 
     async def async_underlying_entity_turn_off(self) -> None:
@@ -279,4 +293,29 @@ class InterfacePropAlgorithmFactory(Protocol):
         thermostat: InterfaceThermostatRuntime,
     ) -> InterfacePropAlgorithmHandler:
         """Create a proportional algorithm handler bound to the runtime thermostat."""
+        ...
+
+
+@runtime_checkable
+class InterfaceFeatureManagerFactory(Protocol):
+    """Factory used by external integrations to register a feature manager."""
+
+    @property
+    def name(self) -> str:
+        """Return the feature manager identifier."""
+        ...
+
+    def supports(self, thermostat: InterfaceThermostatRuntime) -> bool:
+        """Return True when the feature manager is eligible for the thermostat.
+
+        This lets the core skip incompatible thermostats (e.g. a manager
+        restricted to the ``over_climate`` scope).
+        """
+        ...
+
+    def create(
+        self,
+        thermostat: InterfaceThermostatRuntime,
+    ) -> InterfaceFeatureManager:
+        """Create a feature manager bound to the runtime thermostat."""
         ...
