@@ -7,8 +7,12 @@ Extend VTherm thermostat behavior with a custom feature manager that can react t
 ## Concepts
 
 - `InterfaceFeatureManager` defines the manager contract
-- `api.register_manager(manager)` scans the HA climate component and forwards the manager to compatible VTherm entities
+- there are two registration mechanisms:
+  - `api.register_manager(manager)` scans the HA climate component and forwards **a single manager instance** to the compatible VTherm entities that already exist
+  - `api.register_feature_manager(factory)` registers a **factory** so the core instantiates **one manager per eligible thermostat**, including thermostats built later
 - the current API does not require `add_entry(...)` or `remove_entry(...)`
+
+> Use `register_manager(...)` for a shared, singleton-like feature. Use `register_feature_manager(...)` when each thermostat needs its own manager instance or when the feature must be restricted to a scope such as `over_climate`.
 
 ## Step 1: Implement the manager
 
@@ -131,3 +135,80 @@ class FakeVTherm:
     def register_manager(self, manager: InterfaceFeatureManager) -> None:
         self.managers.append(manager)
 ```
+
+## Per-thermostat registration with a factory
+
+When a feature must be instantiated once per thermostat (including thermostats built later), and optionally restricted to a scope such as `over_climate`, register a **feature manager factory** instead of a single instance. This mirrors the proportional algorithm factory: the plugin registers a factory, and the core iterates over the registered factories when building each thermostat, calling `factory.create(runtime)` for every eligible thermostat.
+
+### Step 1: Implement the factory
+
+The factory implements `InterfaceFeatureManagerFactory`: a stable `name`, a `supports(thermostat)` predicate used by the core to skip incompatible thermostats, and a `create(thermostat)` method that returns an `InterfaceFeatureManager` bound to the runtime.
+
+```python
+from vtherm_api.interfaces import (
+    InterfaceFeatureManager,
+    InterfaceFeatureManagerFactory,
+    InterfaceThermostatRuntime,
+)
+
+
+class AutoFanFeatureManager(InterfaceFeatureManager):
+    def __init__(self, thermostat: InterfaceThermostatRuntime) -> None:
+        self._thermostat = thermostat
+
+    # ... implement the InterfaceFeatureManager contract ...
+
+
+class AutoFanManagerFactory(InterfaceFeatureManagerFactory):
+    @property
+    def name(self) -> str:
+        return "auto_fan"
+
+    def supports(self, thermostat: InterfaceThermostatRuntime) -> bool:
+        # Restrict the manager to thermostats exposing underlying fan modes.
+        return thermostat.underlying_fan_modes is not None
+
+    def create(
+        self,
+        thermostat: InterfaceThermostatRuntime,
+    ) -> InterfaceFeatureManager:
+        return AutoFanFeatureManager(thermostat)
+```
+
+### Step 2: Register the factory
+
+```python
+from vtherm_api import VThermAPI
+
+
+async def async_setup_entry(hass, entry) -> bool:
+    api = VThermAPI.get_vtherm_api(hass)
+    if api is None:
+        return False
+
+    factory = AutoFanManagerFactory()
+    if api.get_feature_manager(factory.name) is None:
+        api.register_feature_manager(factory)
+    return True
+
+
+async def async_unload_entry(hass, entry) -> bool:
+    api = VThermAPI.get_vtherm_api()
+    if api is not None:
+        api.unregister_feature_manager("auto_fan")
+    return True
+```
+
+### Registry methods
+
+- `register_feature_manager(factory)` / `unregister_feature_manager(name)`
+- `get_feature_manager(name)` / `list_feature_managers()`
+- `get_feature_manager_factories()` — used by the core to iterate over the registered factories when constructing a thermostat
+
+### Driving the underlying fan
+
+To drive an underlying climate fan from the manager, `InterfaceThermostatRuntime` exposes:
+
+- `regulated_target_temperature` — the regulated setpoint used to drive the underlying
+- `underlying_fan_modes` — the fan modes exposed by the underlying climate(s)
+- `async_set_underlying_fan_mode(fan_mode)` — send a fan mode to the underlying climate(s)

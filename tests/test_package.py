@@ -25,4 +25,10 @@ def test_package_exports_algorithm_plugin_api() -> None:
     assert vtherm_api.InterfacePropAlgorithmFactory is not None
     assert vtherm_api.InterfaceFeatureManager is not None
     assert vtherm_api.InterfaceFeatureManagerFactory is not None
+    assert vtherm_api.VThermLogger is not None
+    assert vtherm_api.VThermLogHandler is not None
+    assert vtherm_api.VThermLogEntry is not None
+    assert vtherm_api.get_vtherm_logger is not None
+    assert vtherm_api.write_event_log is not None
+    assert vtherm_api.async_export_logs is not None
     assert vtherm_api.__version__ == _package_metadata_version()

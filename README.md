@@ -14,18 +14,39 @@ The package is designed for Home Assistant integration code, not as a standalone
 
 ## Table of contents
 
-- [What this package solves](#what-this-package-solves)
-- [Requirements](#requirements)
-- [Installation for development](#installation-for-development)
-- [Architecture](#architecture)
-- [Public imports](#public-imports)
-- [Using VThermAPI](#using-vthermapi)
-- [Registering a proportional algorithm plugin](#registering-a-proportional-algorithm-plugin)
-- [Creating a FeatureManager](#creating-a-featuremanager)
-- [Using PluginClimate](#using-pluginclimate)
-- [Supported VTherm events](#supported-vtherm-events)
-- [Practical patterns](#practical-patterns)
-- [Testing your integration](#testing-your-integration)
+- [vtherm\_api](#vtherm_api)
+  - [Table of contents](#table-of-contents)
+  - [What this package solves](#what-this-package-solves)
+  - [Requirements](#requirements)
+  - [Installation for development](#installation-for-development)
+  - [Architecture](#architecture)
+  - [Public imports](#public-imports)
+  - [Using VThermAPI](#using-vthermapi)
+    - [Main responsibilities](#main-responsibilities)
+    - [Create or retrieve the singleton](#create-or-retrieve-the-singleton)
+    - [Reset the singleton](#reset-the-singleton)
+  - [Registering a proportional algorithm plugin](#registering-a-proportional-algorithm-plugin)
+    - [Link a plugin climate through the API helper](#link-a-plugin-climate-through-the-api-helper)
+  - [Creating a FeatureManager](#creating-a-featuremanager)
+    - [Example: OddMinuteFeatureManager](#example-oddminutefeaturemanager)
+    - [Register the manager through VThermAPI](#register-the-manager-through-vthermapi)
+    - [Minimal thermostat side contract](#minimal-thermostat-side-contract)
+  - [Registering a FeatureManager factory (per-thermostat)](#registering-a-featuremanager-factory-per-thermostat)
+  - [Using PluginClimate](#using-pluginclimate)
+    - [What happens when you link it](#what-happens-when-you-link-it)
+    - [Basic usage](#basic-usage)
+    - [Subclass PluginClimate to react to events](#subclass-pluginclimate-to-react-to-events)
+    - [Simulate a VTherm event](#simulate-a-vtherm-event)
+    - [Forward an action to the linked thermostat](#forward-an-action-to-the-linked-thermostat)
+    - [Remove listeners on unload](#remove-listeners-on-unload)
+  - [Supported VTherm events](#supported-vtherm-events)
+  - [Practical patterns](#practical-patterns)
+    - [Pattern 1: register a proportional algorithm factory](#pattern-1-register-a-proportional-algorithm-factory)
+    - [Pattern 2: build a plugin that mirrors temperature updates](#pattern-2-build-a-plugin-that-mirrors-temperature-updates)
+    - [Pattern 3: replicate another climate entity to a target VTherm](#pattern-3-replicate-another-climate-entity-to-a-target-vtherm)
+    - [Pattern 4: expose a command through your own integration code](#pattern-4-expose-a-command-through-your-own-integration-code)
+  - [Testing your integration](#testing-your-integration)
+  - [Summary](#summary)
 
 ## What this package solves
 
@@ -100,6 +121,8 @@ Use these imports in integration code:
 
 ```python
 from vtherm_api import (
+    InterfaceFeatureManager,
+    InterfaceFeatureManagerFactory,
     InterfacePropAlgorithmFactory,
     InterfacePropAlgorithmHandler,
     InterfaceThermostatRuntime,
