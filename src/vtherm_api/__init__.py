@@ -8,6 +8,7 @@ from .interfaces import (
     InterfacePropAlgorithmHandler,
     InterfaceThermostat,
     InterfaceThermostatRuntime,
+    ValveDiagnosticState,
 )
 from .log_collector import (
     VThermLogEntry,
@@ -20,7 +21,7 @@ from .log_collector import (
 from .plugin_climate import PluginClimate
 from .vtherm_api import VThermAPI
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = [
     "InterfaceCycleScheduler",
@@ -30,6 +31,7 @@ __all__ = [
     "InterfacePropAlgorithmHandler",
     "InterfaceThermostat",
     "InterfaceThermostatRuntime",
+    "ValveDiagnosticState",
     "PluginClimate",
     "VThermAPI",
     "VThermLogEntry",

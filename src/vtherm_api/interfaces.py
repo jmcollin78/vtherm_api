@@ -1,6 +1,7 @@
 # custom_components/versatile_thermostat/thermostat_interface.py
 from __future__ import annotations
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 from datetime import datetime
 
@@ -84,6 +85,15 @@ class InterfaceFeatureManager(Protocol):
         ...
 
 
+@dataclass(frozen=True, slots=True)
+class ValveDiagnosticState:
+    """Public valve state used by diagnostic feature managers."""
+
+    entity_id: str
+    should_be_active: bool | None
+    is_active: bool | None
+
+
 @runtime_checkable
 class InterfaceThermostatRuntime(Protocol):
     """Runtime view of a VTherm exposed to a proportional algorithm plugin."""
@@ -115,6 +125,31 @@ class InterfaceThermostatRuntime(Protocol):
     @property
     def entry_infos(self) -> ConfigData | dict[str, Any]:
         """Return the merged thermostat configuration."""
+        ...
+
+    @property
+    def has_prop(self) -> bool:
+        """Return True when a proportional algorithm is configured."""
+        ...
+
+    @property
+    def requested_hvac_mode(self) -> str | None:
+        """Return the requested HVAC mode, before feature overrides."""
+        ...
+
+    @property
+    def now(self) -> datetime:
+        """Return the thermostat clock used for runtime calculations."""
+        ...
+
+    @property
+    def on_percent(self) -> float | None:
+        """Return the current proportional output as a fraction."""
+        ...
+
+    @property
+    def valve_diagnostics(self) -> tuple[ValveDiagnosticState, ...]:
+        """Return public requested and observed states for valve underlyings."""
         ...
 
     @property
@@ -204,6 +239,14 @@ class InterfaceThermostatRuntime(Protocol):
 
     def async_write_ha_state(self) -> None:
         """Publish the thermostat state to Home Assistant."""
+        ...
+
+    def get_feature_manager(self, name: str) -> InterfaceFeatureManager | None:
+        """Return the feature manager registered under a stable name."""
+        ...
+
+    def send_event(self, event_type: Any, data: dict[str, Any]) -> None:
+        """Send a Versatile Thermostat event."""
         ...
 
 
