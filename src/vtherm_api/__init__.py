@@ -27,9 +27,10 @@ from .log_collector import (
     write_event_log,
 )
 from .plugin_climate import PluginClimate
+from .setpoint_modifier import InterfaceSetpointModifier
 from .vtherm_api import VThermAPI
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 
 __all__ = [
     "AppliedCommandReceipt",
@@ -43,6 +44,7 @@ __all__ = [
     "InterfaceFeatureManagerFactory",
     "InterfacePropAlgorithmFactory",
     "InterfacePropAlgorithmHandler",
+    "InterfaceSetpointModifier",
     "InterfaceThermostat",
     "InterfaceThermostatRuntime",
     "ValveDiagnosticState",

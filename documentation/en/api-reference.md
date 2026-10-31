@@ -399,6 +399,26 @@ async def _on_receipt(self, receipt: AppliedCommandReceipt) -> None:
     ...
 ```
 
+### Regulated temperature modifier
+
+Module `vtherm_api.setpoint_modifier`, name re-exported from `vtherm_api`.
+
+An optional extension of the feature manager contract. `InterfaceFeatureManager` itself is unchanged: a manager that does not implement the extension still satisfies it, and the core detects the capability with `hasattr(manager, "adjust_regulated_temperature")`.
+
+| Name                       | Kind             | Members                                                                                                  |
+| -------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------- |
+| `InterfaceSetpointModifier` | runtime protocol | `adjust_regulated_temperature(desired, regulation_step, command_cause) -> float \| None`                 |
+
+Rules:
+
+- The core calls the method on a feature manager whose `is_configured` is `True`, each time an `over_climate` thermostat computes the regulated temperature. The call comes after the self-regulation and before the core adds the device temperature offset, rounds to `regulation_step`, filters a change smaller than the regulation delta and sends the result. The regulation period, the delta filter and the cycle stay under the control of the core.
+- `desired` is the regulated temperature computed by the core. `regulation_step` is the step the core rounds to: a change smaller than this step is swallowed. `command_cause` is `None` for a regular regulation and `"underlying_tracking"` when the thermostat follows a change made on the device itself.
+- The method returns the temperature to use, or `None` to keep `desired`.
+- The method is a plain function, not a coroutine. It must be quick and must not block.
+- When at least one configured manager implements the method, the core sends the regulated temperature to the underlyings before it changes their HVAC mode, so that a device does not start at its own stored setpoint. This does not happen when the device itself changed its mode.
+- The manager sees the thermostat go OFF through `refresh_state`, which the core calls on every control cycle.
+- An exception raised by the method is logged and does not break the regulation: `desired` is used.
+
 ---
 
 ## Constants and EventType

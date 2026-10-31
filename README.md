@@ -9,6 +9,7 @@ This package currently exposes two main building blocks:
 - A proportional algorithm plugin surface: runtime protocols plus a registry that lets an external integration register a proportional control handler by name.
 - A minimal inhibition façade (issue #2087): `await VThermAPI.set_inhibition(vtherm_entity_id, stop_underlyings)` and `await VThermAPI.unset_inhibition(vtherm_entity_id)`. The plugin owns detection, policy, and `ACTIVE` / `INACTIVE` / `UNKNOWN`; the VTherm core owns the inhibition state and command gate. See [the API reference](documentation/en/api-reference.md#inhibition-issue-2087).
 - An optional command-receipt surface: `InterfaceCommandReceiptScheduler` extends `InterfaceCycleScheduler` so that a proportional algorithm plugin can tag a `start_cycle` request with a `request_id` and receive an `AppliedCommandReceipt` describing the command the scheduler really applied. See [the API reference](documentation/en/api-reference.md#command-receipts).
+- An optional regulated-temperature surface: `InterfaceSetpointModifier` lets a feature manager adjust the temperature an `over_climate` thermostat sends to its underlyings. See [the API reference](documentation/en/api-reference.md#regulated-temperature-modifier).
 
 The package is designed for Home Assistant integration code, not as a standalone HTTP or REST API.
 

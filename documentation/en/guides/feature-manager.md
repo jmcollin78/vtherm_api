@@ -212,3 +212,21 @@ To drive an underlying climate fan from the manager, `InterfaceThermostatRuntime
 - `regulated_target_temperature` — the regulated setpoint used to drive the underlying
 - `underlying_fan_modes` — the fan modes exposed by the underlying climate(s)
 - `async_set_underlying_fan_mode(fan_mode)` — send a fan mode to the underlying climate(s)
+
+### Adjusting the regulated temperature
+
+An `over_climate` thermostat computes a regulated temperature and sends it to the underlying climate. A feature manager can adjust it, for example to limit how fast it moves, by implementing `InterfaceSetpointModifier`:
+
+```python
+class RampingFeatureManager(MyFeatureManager):
+    def adjust_regulated_temperature(
+        self,
+        desired: float,
+        regulation_step: float,
+        command_cause: str | None,
+    ) -> float | None:
+        # Return the temperature to send, or None to keep `desired`
+        return desired
+```
+
+The core calls the method only while `is_configured` is `True`, after the self-regulation and before the rounding, the regulation delta filter and the send. See [Regulated temperature modifier](../api-reference.md#regulated-temperature-modifier) for the full contract.
