@@ -15,6 +15,7 @@ from .interfaces import (
     InterfacePropAlgorithmHandler,
     InterfaceThermostat,
     InterfaceThermostatRuntime,
+    InterfaceTemperatureTimestampRuntime,
     ValveDiagnosticState,
 )
 from .inhibition import InhibitionNotStartedError
@@ -47,6 +48,7 @@ __all__ = [
     "InterfaceSetpointModifier",
     "InterfaceThermostat",
     "InterfaceThermostatRuntime",
+    "InterfaceTemperatureTimestampRuntime",
     "ValveDiagnosticState",
     "PluginClimate",
     "VThermAPI",

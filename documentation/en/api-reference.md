@@ -295,6 +295,31 @@ Runtime view exposed to proportional algorithm handlers.
 | `update_custom_attributes()`              | `() -> None`          | Refresh custom state attributes              |
 | `async_write_ha_state()`                  | `() -> None`          | Publish state to Home Assistant              |
 
+### InterfaceTemperatureTimestampRuntime
+
+Optional, runtime-checkable extension of `InterfaceThermostatRuntime`, exported
+from `vtherm_api` and `vtherm_api.interfaces`. The base runtime protocol is unchanged;
+older runtimes and plugin test doubles can continue to implement it without timestamps.
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `last_temperature_measure` | `datetime` or `None` | Room-temperature freshness clock |
+| `last_ext_temperature_measure` | `datetime` or `None` | Outdoor-temperature freshness clock |
+
+VTherm exposes timezone-aware values in the Home Assistant time zone. `None` means
+the timestamp is unavailable. Check the corresponding current temperature as well:
+VTherm may initialize these clocks before a sensor value is available. Room
+freshness can also be updated by a last-seen sensor, and both clocks can be reset
+on a preset transition without a new temperature reading. Normal temperature
+updates use the Home Assistant state's `last_updated`, with the runtime clock as
+a fallback.
+
+These properties expose the existing freshness semantics. They do not provide a
+sensor acquisition timestamp, a unique observation ID, or a way to measure sensor
+transport latency. Do not use timestamp changes alone to trigger observer
+assimilation or learning. A plugin needing those guarantees still needs a separate
+measurement source or a future core-backed observation contract.
+
 ### InterfacePropAlgorithmHandler
 
 Lifecycle contract for one proportional algorithm handler instance.
@@ -385,6 +410,27 @@ Rules:
 - **Callbacks** are coroutines and are awaited. An exception raised by a callback is logged and does not break the cycle.
 - **Capability detection.** Check `isinstance(scheduler, InterfaceCommandReceiptScheduler)` (or `hasattr(scheduler, "register_command_receipt_callback")`) before passing `request_id`, since a scheduler without the extension does not accept it.
 - The receipt callback is registered separately from the cycle start callback, whose keyword signature is unchanged.
+
+#### Limits for model-based algorithms
+
+`requested_on_percent` is the value received by `start_cycle`, after any upstream
+safety substitution or `max_on_percent` clipping. The current alterations describe
+scheduler changes; an empty set does not establish that the algorithm's original
+output reached the scheduler unchanged.
+
+A receipt describes a scheduler command. It does not confirm device actuation or
+measure physical power. For switches, the ratio is the scheduled duty cycle over
+the master cycle, rather than a timestamped record of individual ON/OFF edges.
+The cycle-start receipt is emitted before actuation.
+
+`hvac_off_reason` and `is_overpowering_detected` provide runtime context. Polling
+them does not supply the effective time of an interruption or its request identity.
+Keep cycle-end handling and any power-history logic required by your model;
+receipts alone are not a complete applied-power trace.
+
+Guaranteeing upstream alteration reasons or timestamped stop receipts requires
+matching VTherm implementation and integration tests. Adding enum values or
+changing a protocol declaration alone cannot provide these guarantees.
 
 ```python
 from vtherm_api import AppliedCommandReceipt, InterfaceCommandReceiptScheduler
