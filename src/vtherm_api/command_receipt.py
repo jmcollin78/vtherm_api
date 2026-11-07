@@ -37,6 +37,19 @@ Rules of the contract:
   remain reported by the cycle end callback.
 * Callbacks are coroutines and are awaited. An exception raised by a callback is
   logged and does not break the cycle.
+
+Scope for model-based plugins:
+
+* ``requested_on_percent`` is the scheduler input, which may already have been
+  changed by thermostat safety or a maximum-output limit. The current contract
+  does not attribute these upstream changes to the algorithm's original output.
+* A receipt describes the scheduler command, not measured physical power or
+  confirmation that a device successfully actuated. In particular, a cycle-start
+  receipt precedes actuation; a switch ratio is a duty cycle, not an instantaneous
+  ON/OFF transition log.
+* Runtime off/shedding state is useful context, but is not a timestamped command
+  event stream. Receipts alone cannot reconstruct every interruption or replace
+  a plugin's applied-power history.
 """
 
 # pylint: disable=unnecessary-ellipsis
