@@ -54,4 +54,5 @@ def test_package_exports_algorithm_plugin_api() -> None:
     assert vtherm_api.get_vtherm_logger is not None
     assert vtherm_api.write_event_log is not None
     assert vtherm_api.async_export_logs is not None
+    assert vtherm_api.UiPlugin is not None
     assert vtherm_api.__version__ == _package_metadata_version()
