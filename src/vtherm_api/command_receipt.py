@@ -33,8 +33,9 @@ Rules of the contract:
   cycle; its receipt is emitted when it is applied.
 * Alterations are sticky per ``request_id``: an automatic restart inherits the
   alterations of the cycle that first applied the request.
-* Cancellation, HVAC OFF and power shedding are not covered by receipts; they
-  remain reported by the cycle end callback.
+* Cancellation, HVAC OFF and power shedding are not covered by receipts.
+  Cycle-end callbacks can report a shortened cycle. Feature managers can also
+  receive ``STOP`` on covered paths via the optional underlying power hook.
 * Callbacks are coroutines and are awaited. An exception raised by a callback is
   logged and does not break the cycle.
 

@@ -18,6 +18,8 @@ from .interfaces import (
     InterfaceTemperatureTimestampRuntime,
     ValveDiagnosticState,
 )
+from .calibration_modifier import CalibrationOffsetRequest, InterfaceCalibrationOffsetModifier
+from .const import UNDERLYING_HOOK_TIMEOUT_SEC
 from .inhibition import InhibitionNotStartedError
 from .log_collector import (
     VThermLogEntry,
@@ -29,16 +31,29 @@ from .log_collector import (
 )
 from .plugin_climate import PluginClimate
 from .setpoint_modifier import InterfaceSetpointModifier
+from .underlying_hooks import (
+    InterfaceUnderlyingHvacModeHook,
+    InterfaceUnderlyingPowerHook,
+    InterfaceValveCommandHook,
+    PowerCommandKind,
+    UnderlyingPowerCommand,
+    ValveCommand,
+    ValveCommandCause,
+)
+from .ui_plugin import UiPlugin
+from .valve_write import InterfaceValveWriteHook, ValveWriteDecision, ValveWriteRequest
 from .vtherm_api import VThermAPI
 
-__version__ = "0.8.0"
+__version__ = "0.11.0"
 
 __all__ = [
     "AppliedCommandReceipt",
+    "CalibrationOffsetRequest",
     "CommandAlteration",
     "CommandReceiptCallback",
     "CommandReceiptKind",
     "InhibitionNotStartedError",
+    "InterfaceCalibrationOffsetModifier",
     "InterfaceCommandReceiptScheduler",
     "InterfaceCycleScheduler",
     "InterfaceFeatureManager",
@@ -49,8 +64,20 @@ __all__ = [
     "InterfaceThermostat",
     "InterfaceThermostatRuntime",
     "InterfaceTemperatureTimestampRuntime",
+    "InterfaceUnderlyingHvacModeHook",
+    "InterfaceUnderlyingPowerHook",
+    "InterfaceValveCommandHook",
+    "InterfaceValveWriteHook",
+    "PowerCommandKind",
+    "UNDERLYING_HOOK_TIMEOUT_SEC",
+    "UnderlyingPowerCommand",
+    "ValveCommand",
+    "ValveCommandCause",
     "ValveDiagnosticState",
+    "ValveWriteDecision",
+    "ValveWriteRequest",
     "PluginClimate",
+    "UiPlugin",
     "VThermAPI",
     "VThermLogEntry",
     "VThermLogHandler",

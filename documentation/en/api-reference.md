@@ -17,7 +17,7 @@ Get or create the singleton instance.
 
 #### `VThermAPI.reset_vtherm_api() -> None`
 
-Reset the singleton and clear the proportional-algorithm and feature-manager factory registries.
+Reset the singleton and clear the proportional-algorithm, feature-manager and UI plugin registries.
 Mainly useful in tests.
 
 ### Properties
@@ -121,6 +121,96 @@ Only entities implementing `InterfaceThermostat` and exposing `device_info["mode
 #### `_set_now(now: datetime) -> None`
 
 Testing helper that overrides the value returned by `api.now`.
+
+### UI plugin registry
+
+A UI plugin is an integration that adds screens to the
+[Versatile Thermostat dashboard](https://github.com/bontiv/vtherm_dashboard). It declares itself here and serves a
+JavaScript module that the dashboard loads. The guide for plugin authors (JavaScript side, load order, plugin status
+page) is the dashboard's [Python API for UI plugins](https://github.com/bontiv/vtherm_dashboard/blob/main/docs/plugins/python-api.md).
+
+The registry is **passive**. It checks the structure of a declaration and the uniqueness of its identifier, and keeps
+the declarations in registration order. It does not sort the plugins, and it does not check the URL, the version
+constraint, the identifiers `core` and `core_*` reserved for the native plugins of the dashboard, or the dependencies.
+The dashboard does that each time it builds the list of plugins to load. Call these methods from the Home Assistant
+event loop, for example in `async_setup_entry` and `async_unload_entry`. The registry is independent of the
+proportional-algorithm and feature-manager registries.
+
+<!-- example: ui-plugin-registry -->
+```python
+from vtherm_api import VThermAPI
+
+PLUGIN_ID = "my_plugin"
+
+
+async def async_setup_entry(hass, entry) -> bool:
+    # Serve /my_plugin_static/my-plugin.js with a static path of your integration first.
+    VThermAPI.get_vtherm_api(hass).register_ui_plugin(
+        PLUGIN_ID,
+        "/my_plugin_static/my-plugin.js",
+        ">=1.0,<2.0",
+        requires=["core"],
+        load_after=["core_tpi"],
+    )
+    return True
+
+
+async def async_unload_entry(hass, entry) -> bool:
+    VThermAPI.get_vtherm_api(hass).unregister_ui_plugin(PLUGIN_ID)
+    return True
+```
+
+#### `register_ui_plugin(plugin_id: str, js_url: str, dashboard_version: str, *, requires=None, load_after=None, load_before=None) -> None`
+
+Declare a UI plugin.
+
+| Parameter           | Type                         | Meaning                                                                                                              |
+| ------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `plugin_id`         | `str`                        | Unique identifier. Surrounding spaces are removed.                                                                   |
+| `js_url`            | `str`                        | URL of the JavaScript module, kept as given. The dashboard only loads a path of the instance that starts with `/`.   |
+| `dashboard_version` | `str`                        | Versions of the dashboard that the plugin supports, for example `">=1.0,<2.0"`, kept as given.                      |
+| `requires`          | `list[str] \| tuple \| None` | Plugins that must be present. Surrounding spaces of each identifier are removed.                                     |
+| `load_after`        | `list[str] \| tuple \| None` | Plugins to load before this one when they are present.                                                               |
+| `load_before`       | `list[str] \| tuple \| None` | Plugins to load after this one when they are present.                                                                |
+
+Registering again a declaration equal to the registered one (same identifier after removing spaces, same URL,
+version constraint and dependencies) does nothing: `async_setup_entry` can run again, after a setup retry or for each
+config entry of the integration, without unregistering first. The plugin keeps its place in `get_ui_plugins()`.
+
+Raises `ValueError` in these cases. Nothing is registered, and an existing plugin is kept.
+
+| Cause                                                                                              | Message                                                                       |
+| -------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `plugin_id`, `js_url` or `dashboard_version` is not a string, or is empty after removing spaces     | `The UI plugin field '<name>' is required and must be a non-empty string`     |
+| `requires`, `load_after` or `load_before` is not `None`, a list or a tuple (a single string is refused) | `The UI plugin field '<name>' must be a list of plugin identifiers`           |
+| An item of `requires`, `load_after` or `load_before` is not a string, or is empty after removing spaces | `The UI plugin field '<name>' must only contain non-empty strings, got <value>` (the `repr()` of the item) |
+| A different plugin with the same identifier is already registered                                  | `A UI plugin with the identifier '<id>' is already registered`                |
+
+#### `unregister_ui_plugin(plugin_id: str) -> None`
+
+Remove a UI plugin. Surrounding spaces are removed. An unknown identifier, or a value that is not a string, is
+ignored. A removed identifier can be registered again; it then comes last in `get_ui_plugins()`.
+
+#### `get_ui_plugins() -> list[UiPlugin]`
+
+Return the registered UI plugins in registration order, or an empty list. The order is not a load order: a plugin
+that requires another one can come first. Each call returns a new list.
+
+#### `UiPlugin`
+
+**Module**: `vtherm_api.ui_plugin`, exported by `vtherm_api`.
+
+Immutable dataclass (`frozen=True`) that compares by value. Its constructor does not validate: `register_ui_plugin`
+does.
+
+| Field               | Type              | Default |
+| ------------------- | ----------------- | ------- |
+| `id`                | `str`             | none    |
+| `js_url`            | `str`             | none    |
+| `dashboard_version` | `str`             | none    |
+| `requires`          | `tuple[str, ...]` | `()`    |
+| `load_after`        | `tuple[str, ...]` | `()`    |
+| `load_before`       | `tuple[str, ...]` | `()`    |
 
 ---
 
@@ -406,7 +496,7 @@ Rules:
 - **`UPDATE`.** Emitted for each valve `start_cycle` that goes through the running-cycle path, even when the value is unchanged, and for each deferred valve update (`request_id=None`).
 - **No receipt** for a switch request stored as pending during an active cycle; its receipt is emitted when it is applied.
 - **Sticky alterations.** Alterations are sticky per `request_id`: an automatic restart inherits the alterations of the cycle that first applied the request.
-- **Not covered.** Cancellation, HVAC OFF and power shedding are reported by the cycle end callback (`elapsed_ratio < 1`), not by receipts.
+- **Interruptions.** Command receipts do not cover cancellation, HVAC OFF or power shedding. Cycle-end callbacks can report a shortened cycle, while the optional [underlying power hook](#underlying-hooks) reports `STOP` to feature managers when the scheduler cancels a running cycle on a covered path.
 - **Callbacks** are coroutines and are awaited. An exception raised by a callback is logged and does not break the cycle.
 - **Capability detection.** Check `isinstance(scheduler, InterfaceCommandReceiptScheduler)` (or `hasattr(scheduler, "register_command_receipt_callback")`) before passing `request_id`, since a scheduler without the extension does not accept it.
 - The receipt callback is registered separately from the cycle start callback, whose keyword signature is unchanged.
@@ -428,9 +518,9 @@ them does not supply the effective time of an interruption or its request identi
 Keep cycle-end handling and any power-history logic required by your model;
 receipts alone are not a complete applied-power trace.
 
-Guaranteeing upstream alteration reasons or timestamped stop receipts requires
-matching VTherm implementation and integration tests. Adding enum values or
-changing a protocol declaration alone cannot provide these guarantees.
+The [underlying power hook](#underlying-hooks) complements receipts with
+per-device notifications, including `STOP` on covered paths. Its stop timestamp
+marks the notification and carries no algorithm request ID or alteration reasons.
 
 ```python
 from vtherm_api import AppliedCommandReceipt, InterfaceCommandReceiptScheduler
@@ -464,6 +554,148 @@ Rules:
 - When at least one configured manager implements the method, the core sends the regulated temperature to the underlyings before it changes their HVAC mode, so that a device does not start at its own stored setpoint. This does not happen when the device itself changed its mode.
 - The manager sees the thermostat go OFF through `refresh_state`, which the core calls on every control cycle.
 - An exception raised by the method is logged and does not break the regulation: `desired` is used.
+
+### Underlying hooks
+
+Module `vtherm_api.underlying_hooks`, names re-exported from `vtherm_api`. `UNDERLYING_HOOK_TIMEOUT_SEC` is in `vtherm_api.const` and re-exported too.
+
+Three optional extensions of the feature manager contract that let a plugin follow the commands the core sends to the underlyings, for example to work around the quirks of a device model. `InterfaceFeatureManager` itself is unchanged: a manager implements only the hooks it needs, and the core detects each capability with `hasattr` on the method name.
+
+| Name                              | Kind             | Members                                                                                                  |
+| --------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------- |
+| `InterfaceUnderlyingHvacModeHook` | runtime protocol | `async_before_underlying_hvac_mode(climate_entity_id, hvac_mode, current_hvac_mode, command_cause) -> None` |
+| `InterfaceValveCommandHook`       | runtime protocol | `async_after_valve_command(command: ValveCommand) -> None`                                               |
+| `InterfaceUnderlyingPowerHook`    | runtime protocol | `async_on_underlying_power(command: UnderlyingPowerCommand) -> None`                                     |
+| `ValveCommand`                    | frozen dataclass | valve command really sent to a `valve_regulation` underlying                                             |
+| `ValveCommandCause`               | `StrEnum`        | `REGULATION`, `TURN_OFF`, `STARTUP`, `REPAIR`, `RECALIBRATION`                                           |
+| `UnderlyingPowerCommand`          | frozen dataclass | power requested from and applied to one underlying                                                       |
+| `PowerCommandKind`                | `StrEnum`        | `CYCLE_START`, `UPDATE`, `STOP`                                                                          |
+| `UNDERLYING_HOOK_TIMEOUT_SEC`     | constant         | `10`                                                                                                     |
+
+Common rules:
+
+- The hooks are notifications. None of them modifies or cancels the command of the core.
+- Each hook is optional and independent. A manager can implement only one.
+- The core calls a hook only on a feature manager whose `is_configured` is `True`.
+- A hook is a coroutine awaited by the core. It must return quickly: a long treatment (waiting, kick) is scheduled with `async_call_later` or a task, without blocking the hook. The core stops waiting after `UNDERLYING_HOOK_TIMEOUT_SEC` seconds.
+- An exception or a timeout is logged and never prevents the command of the core.
+- A hook is called only if the command is really sent, by the core or, for a valve, by a plugin that took the write over through `InterfaceValveWriteHook`. It is not called if the inhibition gate blocks the command, if the requested mode is already in place or if the load shedding refuses to switch on.
+- New enum values can be added in a minor version (`RECALIBRATION` came in 0.10.0). A hook must accept a `cause` or a `kind` it does not know, for example by ignoring it, rather than fail on it.
+- HVAC modes are passed as `str`, like `InterfaceThermostatRuntime.vtherm_hvac_mode`.
+
+`async_before_underlying_hvac_mode`:
+
+- Called just before `climate.set_hvac_mode` is sent to the underlying climate, while this one is still in `current_hvac_mode`.
+- `command_cause` is `None` for a regular command and `"underlying_tracking"` when the thermostat copies a change made on the device.
+- For an `over_climate` with direct valve control going OFF, this hook is called before the OFF mode is sent, while the climate is still in `current_hvac_mode`. The valve is closed afterwards, by the regulation, with a `ValveCommand` whose `cause` is `REGULATION` and whose `hvac_mode` is `"off"`.
+- A plugin that needs to act before OFF must do it in this hook. This hook receives no command object: the target mode is its `hvac_mode` parameter (`"off"` here). Use it, and not the Home Assistant state of the climate, which can still be on. `command.hvac_mode` only exists on the `ValveCommand` of `async_after_valve_command`.
+
+`async_after_valve_command`:
+
+- Called after the opening and closing degrees have been sent to a `valve_regulation` underlying.
+- `ValveCommand` carries `climate_entity_id`, `opening_degree_entity_id`, `closing_degree_entity_id` (or `None`), `percent_open` (raw request, 0..100), `opening_degree`, `closing_degree` (or `None`), `hvac_mode`, `cause`, `requested_opening_degree` (the value of the core when the final value, changed through `InterfaceValveWriteHook`, differs from it, otherwise `None`) and `written_by_plugin` (`True` when a plugin wrote the valve itself).
+- `cause` is `REGULATION` for the regulation cycle, `TURN_OFF` when an underlying is turned off directly or when an inhibition stops, `STARTUP` for the initial state check, `REPAIR` for a valve that drifted from the requested value or that is resynchronized after an inhibition, and `RECALIBRATION` for a valve forced to a full opening or a full closing by the valve recalibration of the core.
+- To know the mode of the thermostat in this hook, read `command.hvac_mode` of the `ValveCommand` rather than the Home Assistant state of the climate.
+- Since 0.10.0, the hook is called after each forced write of the valve recalibration, which did not call it in 0.9.0. A plugin that tracks the regulation must filter these commands on `cause`. It is called with `cause=RECALIBRATION`. `opening_degree` and `closing_degree` are the values forced on the entities (`closing_degree` is `None` when the thermostat has no closing entity), `percent_open` is 100 for the full opening and 0 for the full closing, `written_by_plugin` is `False` and `requested_opening_degree` is `None`.
+- The initial priming of unknown degrees does not call this hook.
+- `async_before_valve_write` is not called for the recalibration: it must travel the whole stroke, so a plugin cannot change or take over these writes. A plugin that owns a companion entity (for example a closing degree the thermostat does not drive) aligns it in `async_after_valve_command`.
+- The hook is also called when a plugin wrote the valve itself, with the final value.
+
+`async_on_underlying_power`:
+
+- `UnderlyingPowerCommand` carries `underlying_entity_id`, `underlying_type` (`"switch"`, `"valve"` or `"valve_regulation"`), `climate_entity_id` (the climate driven by a `valve_regulation` underlying, otherwise `None`), `hvac_mode`, `kind`, `requested_on_percent` (clamped to [0, 1]), `applied_on_percent`, `on_time_sec`, `off_time_sec`, `cycle_duration_sec`, `start_offset_sec` (switch only, otherwise `None`), `is_repeat`, `cycle_start_monotonic` (`time.monotonic()` at the start of the master cycle the command belongs to, `None` when no cycle is running) and `monotonic` (`time.monotonic()` when the notification is built).
+- `CYCLE_START`: at each cycle start, including the automatic restart (`is_repeat=True`). For a switch, one call per underlying with its `start_offset_sec`.
+- `UPDATE`: at each valve update during a running cycle, even if the value does not change.
+- `STOP`: when a running cycle is cancelled (OFF, load shedding, shutdown). `applied_on_percent` is then 0 and `cycle_start_monotonic` is `None`, as the cycle is over.
+- `cycle_start_monotonic` is also `None` for an `UPDATE` emitted outside a cycle, like `AppliedCommandReceipt.cycle_start_monotonic`.
+- The on/off toggles of a switch during the cycle do not trigger a notification. A switch turns on at `cycle_start_monotonic + start_offset_sec` and turns off `on_time_sec` later. The cycle is circular: when `start_offset_sec + on_time_sec` exceeds `cycle_duration_sec`, the off time wraps to the beginning of the cycle. These times are nominal, as the minimal activation and deactivation delays of the core can shift a toggle.
+- The hook is called after the cycle start has been actuated, and the core awaits the managers one after the other (up to `UNDERLYING_HOOK_TIMEOUT_SEC` each). A notification can therefore arrive several seconds after the actuation: use `cycle_start_monotonic` and `monotonic`, never the reception time, to synchronize a device.
+- It is distinct from `AppliedCommandReceipt`: the receipt is for the algorithm plugin and describes the whole thermostat, this hook is for feature managers and describes each underlying.
+
+### Valve write hook
+
+Module `vtherm_api.valve_write`, names re-exported from `vtherm_api`.
+
+An optional extension of the feature manager contract that lets a plugin change the opening degree before the core writes it to a `valve_regulation` underlying, or write the valve itself. Unlike the underlying hooks, it can change the command of the core. `InterfaceFeatureManager` is unchanged, and the core detects the capability with `hasattr(manager, "async_before_valve_write")`.
+
+| Name                      | Kind             | Members                                                                                    |
+| ------------------------- | ---------------- | ------------------------------------------------------------------------------------------ |
+| `InterfaceValveWriteHook` | runtime protocol | `async async_before_valve_write(request: ValveWriteRequest) -> ValveWriteDecision \| None` |
+| `ValveWriteRequest`       | frozen dataclass | the write about to be done                                                                 |
+| `ValveWriteDecision`      | frozen dataclass | the answer of the manager                                                                  |
+
+`ValveWriteRequest` fields, in order:
+
+| Field                      | Type                | Meaning                                                                      |
+| -------------------------- | ------------------- | ---------------------------------------------------------------------------- |
+| `climate_entity_id`        | `str`               | climate entity of the underlying                                             |
+| `opening_degree_entity_id` | `str`               | opening degree entity                                                        |
+| `closing_degree_entity_id` | `str \| None`       | closing degree entity, `None` when there is none                             |
+| `percent_open`             | `int`               | raw request of the regulation, 0..100                                        |
+| `opening_degree`           | `int`               | proposed value: the one of the core, or the one left by the previous manager |
+| `requested_opening_degree` | `int`               | value computed by the core, before any manager                               |
+| `max_opening_degree`       | `float`             | maximum of the opening degree entity                                         |
+| `hvac_mode`                | `str`               | VTherm HVAC mode                                                             |
+| `cause`                    | `ValveCommandCause` | why the core writes the valve                                                |
+
+`ValveWriteDecision` fields, in order:
+
+| Field            | Type            | Default | Meaning                                                                              |
+| ---------------- | --------------- | ------- | ------------------------------------------------------------------------------------ |
+| `opening_degree` | `float \| None` | `None`  | new proposed value, `None` leaves it unchanged; rounded to an integer by the core    |
+| `handled`        | `bool`          | `False` | `True` when the plugin writes the valve itself                                       |
+| `settle_sec`     | `float \| None` | `None`  | time before the core repairs the valve, `None` for the resend delay of the core      |
+
+Rules:
+
+- The core calls the method on a feature manager whose `is_configured` is `True`, in the order of the names of their factories (alphabetical), as returned by `get_feature_manager_factories()`.
+- The call is made by `send_percent_open` of a `valve_regulation` underlying, for every cause, after the degrees are computed and before they are written. It is not made for the recalibration (see `async_after_valve_command`, called with `cause=RECALIBRATION`), for the initial priming of unknown degrees, nor when the inhibition gate blocks the write. `over_valve` is not covered.
+- The method is a coroutine awaited by the core, which cancels the call after `UNDERLYING_HOOK_TIMEOUT_SEC` seconds and then writes the value it had before that manager. The method must therefore not write the valve itself: a plugin that takes the write over starts its sequence in a background task and returns its decision at once. Otherwise a write cut by the timeout races with the write of the core.
+- The managers form a chain: each one receives in `opening_degree` the value left by the previous one.
+- Returning `None` or an empty decision leaves the value unchanged.
+- `opening_degree=X` makes X the value proposed to the next manager. X can be a float: the core rounds it to an integer and clamps it to `0..max_opening_degree`.
+- `handled=True` means the plugin writes the valve itself. The chain stops and the core writes neither the opening nor the closing degree. `opening_degree`, when given, is the value the valve will end at, otherwise it is the proposed value. The plugin is then responsible for the closing degree too: the core does not check nor repair it after such a write.
+- After the chain, the final value becomes the last value sent to the underlying. When the core writes and there is a closing degree entity, it writes `100` minus the final value, like the closing degree it computes.
+- `settle_sec` is the time the core waits after the decision before it repairs the valve. It is taken into account with or without `handled`. When several managers give one, the largest is kept. `None` keeps the resend delay of the core. A negative or non-finite value is ignored. There is no upper bound: announce the real duration of the sequence, not a larger one, or a drifted valve stays unrepaired for that long.
+- A repair goes through this method again, with the cause `REPAIR`.
+- `async_after_valve_command` is called in all cases, with the final value. `ValveCommand.requested_opening_degree` is the value of the core when the final value differs from it, otherwise `None`. `ValveCommand.written_by_plugin` is `True` when a plugin wrote the valve.
+- An exception, an invalid value or a timeout is logged, and the core goes on with the value it had before that manager.
+
+### Calibration offset modifier
+
+Module `vtherm_api.calibration_modifier`, names re-exported from `vtherm_api`.
+
+An optional extension of the feature manager contract that lets a plugin adjust the calibration offset an `over_climate` thermostat writes to the calibration entity of a device. `InterfaceFeatureManager` is unchanged, and the core detects the capability with `hasattr(manager, "adjust_calibration_offset")`.
+
+| Name                                 | Kind             | Members                                                                         |
+| ------------------------------------ | ---------------- | ------------------------------------------------------------------------------- |
+| `InterfaceCalibrationOffsetModifier` | runtime protocol | `adjust_calibration_offset(request: CalibrationOffsetRequest) -> float \| None` |
+| `CalibrationOffsetRequest`           | frozen dataclass | the offset about to be written                                                  |
+
+`CalibrationOffsetRequest` fields, in order:
+
+| Field                   | Type    | Meaning                                                                       |
+| ----------------------- | ------- | ----------------------------------------------------------------------------- |
+| `climate_entity_id`     | `str`   | climate entity of the underlying                                              |
+| `calibration_entity_id` | `str`   | calibration entity                                                            |
+| `offset`                | `float` | proposed offset: the one of the core, or the one left by the previous manager |
+| `requested_offset`      | `float` | offset computed by the core, clamped and rounded                              |
+| `current_offset`        | `float` | raw value read from the calibration entity                                    |
+| `local_temperature`     | `float` | temperature read from the device                                              |
+| `room_temperature`      | `float` | temperature of the room, from the sensor of the VTherm                        |
+| `min_offset`            | `float` | minimum of the calibration entity                                             |
+| `max_offset`            | `float` | maximum of the calibration entity                                             |
+| `step`                  | `float` | step of the calibration entity                                                |
+
+Rules:
+
+- The core calls the method on a feature manager whose `is_configured` is `True`, in the order of the names of their factories (alphabetical), as returned by `get_feature_manager_factories()`.
+- The call is made by `synchronize_device_temperature` of an `over_climate` thermostat, only in calibration mode (`sync_with_calibration`), after the offset is computed and before it is compared with `current_offset`.
+- The method is a plain function and does no input or output.
+- The managers form a chain: each one receives in `offset` the value left by the previous one. Returning `None` keeps the value.
+- The values are in the unit and the direction of the device. A device with an inverted sign receives `current_offset` as it is, and has all the data to compute the offset again.
+- The core clamps the result to `min_offset..max_offset`, rounds it to `step`, and writes it only if it differs from `current_offset`.
+- An exception or an invalid value is logged, and the core goes on with the value it had before that manager.
 
 ---
 
