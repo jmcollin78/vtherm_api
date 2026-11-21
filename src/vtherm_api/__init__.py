@@ -15,6 +15,7 @@ from .interfaces import (
     InterfacePropAlgorithmHandler,
     InterfaceThermostat,
     InterfaceThermostatRuntime,
+    InterfaceTemperatureTimestampRuntime,
     ValveDiagnosticState,
 )
 from .calibration_modifier import CalibrationOffsetRequest, InterfaceCalibrationOffsetModifier
@@ -43,7 +44,7 @@ from .ui_plugin import UiPlugin
 from .valve_write import InterfaceValveWriteHook, ValveWriteDecision, ValveWriteRequest
 from .vtherm_api import VThermAPI
 
-__version__ = "0.11.0"
+__version__ = "0.12.0"
 
 __all__ = [
     "AppliedCommandReceipt",
@@ -62,6 +63,7 @@ __all__ = [
     "InterfaceSetpointModifier",
     "InterfaceThermostat",
     "InterfaceThermostatRuntime",
+    "InterfaceTemperatureTimestampRuntime",
     "InterfaceUnderlyingHvacModeHook",
     "InterfaceUnderlyingPowerHook",
     "InterfaceValveCommandHook",

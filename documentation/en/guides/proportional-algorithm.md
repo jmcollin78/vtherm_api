@@ -220,3 +220,39 @@ async def control_heating(self, timestamp=None, force: bool = False) -> None:
 ```
 
 See [InterfaceThermostatRuntime](../api-reference.md#interfacethermostatruntime) for the full contract.
+
+### Reading temperature freshness timestamps
+
+Use the optional timestamp capability rather than reading an undeclared attribute:
+
+```python
+from vtherm_api import InterfaceTemperatureTimestampRuntime
+
+
+def room_temperature_age_seconds(t) -> float | None:
+    if not isinstance(t, InterfaceTemperatureTimestampRuntime):
+        return None
+    measured = t.last_temperature_measure
+    if t.current_temperature is None or measured is None:
+        return None
+    now = t.now
+    if measured.utcoffset() is None or now.utcoffset() is None:
+        return None
+    return max(0.0, (now - measured).total_seconds())
+```
+
+This computes the age of VTherm's freshness clock, which may have been reset by
+initialization, a last-seen update, or a preset transition. It is not the age of a
+physical measurement and cannot identify a new observation for learning. See
+[the timestamp semantics](../api-reference.md#interfacetemperaturetimestampruntime)
+and [receipt limits](../api-reference.md#limits-for-model-based-algorithms) before
+using either surface as input to an observer.
+
+For feature state, use the declared runtime lookup and handle an absent manager:
+
+```python
+safety = t.get_feature_manager("safety")
+safety_detected = safety is not None and safety.is_detected
+```
+
+This reads a condition; it does not identify which command was altered or when.
