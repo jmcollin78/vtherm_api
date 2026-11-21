@@ -82,7 +82,6 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}/vtherm_api/src
         run: |
-          cp ../vtherm_api/tests/test_api_temperature_timestamps.py tests/
           python -m pytest \
             -qq \
             --timeout=9 \
