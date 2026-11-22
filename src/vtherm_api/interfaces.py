@@ -251,6 +251,36 @@ class InterfaceThermostatRuntime(Protocol):
 
 
 @runtime_checkable
+class InterfaceTemperatureTimestampRuntime(InterfaceThermostatRuntime, Protocol):
+    """Optional runtime extension exposing VTherm's temperature freshness clocks.
+
+    These legacy clocks may be initialized or reset without a new temperature
+    observation. They are neither sensor acquisition times nor observation IDs.
+    Adding this extension leaves the base runtime protocol unchanged.
+    """
+
+    @property
+    def last_temperature_measure(self) -> datetime | None:
+        """Return the room-temperature freshness timestamp, or None if unavailable.
+
+        VTherm uses a timezone-aware datetime in the Home Assistant time zone.
+        A last-seen update or a freshness reset can change it without changing
+        current_temperature. A value alone does not prove a measurement exists.
+        """
+        ...
+
+    @property
+    def last_ext_temperature_measure(self) -> datetime | None:
+        """Return the outdoor-temperature freshness timestamp, or None if unavailable.
+
+        VTherm uses a timezone-aware datetime in the Home Assistant time zone.
+        Initialization or a freshness reset can change it without changing
+        current_outdoor_temperature.
+        """
+        ...
+
+
+@runtime_checkable
 class InterfaceCycleScheduler(Protocol):
     """Contract exposed by the VTherm cycle scheduler."""
 
