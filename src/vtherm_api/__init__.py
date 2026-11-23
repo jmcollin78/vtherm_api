@@ -44,7 +44,7 @@ from .ui_plugin import UiPlugin
 from .valve_write import InterfaceValveWriteHook, ValveWriteDecision, ValveWriteRequest
 from .vtherm_api import VThermAPI
 
-__version__ = "0.13.0"
+__version__ = "0.13.1"
 
 __all__ = [
     "AppliedCommandReceipt",
