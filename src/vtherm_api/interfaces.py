@@ -1,6 +1,13 @@
-# custom_components/versatile_thermostat/thermostat_interface.py
+"""Public contracts for VTherm plugins.
+
+Feature managers that keep time-based state must use the thermostat runtime's
+``now`` clock, never a local wall clock such as ``datetime.now()``. Two refreshes
+within one control cycle share that clock value: the second observes no elapsed
+time and must not accumulate state again. A local clock offers no such protection.
+"""
+
 from __future__ import annotations
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 from datetime import datetime
@@ -96,7 +103,7 @@ class ValveDiagnosticState:
 
 @runtime_checkable
 class InterfaceThermostatRuntime(Protocol):
-    """Runtime view of a VTherm exposed to a proportional algorithm plugin."""
+    """Runtime view of a VTherm exposed to algorithm plugins and feature managers."""
 
     prop_algorithm: Any
     minimal_activation_delay: int
@@ -133,13 +140,18 @@ class InterfaceThermostatRuntime(Protocol):
         ...
 
     @property
+    def has_valve_regulation(self) -> bool:
+        """Return True when the thermostat uses valve regulation."""
+        ...
+
+    @property
     def requested_hvac_mode(self) -> str | None:
         """Return the requested HVAC mode, before feature overrides."""
         ...
 
     @property
     def now(self) -> datetime:
-        """Return the thermostat clock used for runtime calculations."""
+        """Return the shared cycle clock managers must use for time-based state."""
         ...
 
     @property
@@ -183,6 +195,15 @@ class InterfaceThermostatRuntime(Protocol):
         ...
 
     @property
+    def vtherm_hvac_modes(self) -> Sequence[object]:
+        """Return the modes currently accepted by the thermostat.
+
+        Modes may be core-specific objects rather than strings. Compare a
+        candidate with their string representations; disabled modes are excluded.
+        """
+        ...
+
+    @property
     def hvac_action(self) -> str | None:
         """Return the current HVAC action."""
         ...
@@ -223,6 +244,16 @@ class InterfaceThermostatRuntime(Protocol):
 
     async def async_underlying_entity_turn_off(self) -> None:
         """Turn off the underlying entities."""
+        ...
+
+    async def async_request_state_refresh(self) -> None:
+        """Force an immediate state recalculation after a manager decision.
+
+        Mark the requested state as changed, force recalculation of the current
+        state, and publish the result before returning. An unchanged effective
+        state is harmless. If the thermostat is not ready, log and return without
+        raising or changing its published state. Call on transitions, not per cycle.
+        """
         ...
 
     async def async_control_heating(

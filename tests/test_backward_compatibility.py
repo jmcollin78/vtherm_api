@@ -6,6 +6,9 @@ type-checking and registering unchanged. These tests freeze the 0.6.0 public
 surface and the 0.6.2 inhibition facade additions, and exercise plugin-style
 implementations that know nothing about later additions.
 
+The 0.13.0 release deliberately extends the core-provided thermostat runtime
+with three members, while preserving the plugin-implemented protocols.
+
 The inhibition provider surface of 0.6.0 (provider/factory protocols, status,
 stop policy, thermostat view and the provider factory registry) was replaced
 by the ``set_inhibition`` / ``unset_inhibition`` facade before 0.6.2 and is
@@ -60,6 +63,12 @@ API_0_6_EXPORTS = {
 }
 
 API_0_6_2_EXPORTS = {"InhibitionNotStartedError"}
+
+API_0_13_RUNTIME_ADDITIONS = {
+    "async_request_state_refresh",
+    "has_valve_regulation",
+    "vtherm_hvac_modes",
+}
 
 API_0_6_PROTOCOL_MEMBERS = {
     InterfaceCycleScheduler: {"cancel_cycle", "is_cycle_running", "register_cycle_end_callback", "register_cycle_start_callback", "start_cycle"},
@@ -140,9 +149,10 @@ def test_0_6_import_paths_are_unchanged() -> None:
     assert vtherm_api.VThermAPI is VThermAPI
 
 
-def test_existing_protocols_have_exactly_their_0_6_members() -> None:
+def test_existing_protocols_keep_their_0_6_members_with_0_13_runtime_additions() -> None:
     for protocol, members in API_0_6_PROTOCOL_MEMBERS.items():
-        assert set(protocol.__protocol_attrs__) == members, protocol.__name__
+        additions = API_0_13_RUNTIME_ADDITIONS if protocol is InterfaceThermostatRuntime else set()
+        assert set(protocol.__protocol_attrs__) == members | additions, protocol.__name__
 
 
 def test_existing_signatures_are_unchanged() -> None:

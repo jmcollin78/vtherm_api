@@ -342,7 +342,13 @@ Contract for a feature manager registered through `VThermAPI.register_manager(..
 
 ### InterfaceThermostatRuntime
 
-Runtime view exposed to proportional algorithm handlers.
+Runtime view exposed to proportional algorithm handlers and feature managers.
+
+Version `0.13.0` adds `async_request_state_refresh()`, `has_valve_regulation` and
+`vtherm_hvac_modes` to this protocol. Runtime implementations and plugin test
+doubles must provide these three members; existing plugin manager and algorithm
+interfaces are unchanged. The VTherm core must implement them before raising its
+minimum API dependency to `0.13.0`.
 
 #### Writable attributes
 
@@ -361,12 +367,15 @@ Runtime view exposed to proportional algorithm handlers.
 | `name`                         | `str`                    | Thermostat name                     |
 | `unique_id`                    | `str`                    | Unique id                           |
 | `entry_infos`                  | `ConfigData              | dict`                               | Merged thermostat config                                  |
+| `now`                          | `datetime`               | Shared thermostat clock for runtime calculations |
+| `has_valve_regulation`         | `bool`                   | Whether the thermostat uses valve regulation |
 | `current_temperature`          | `float                   | None`                               | Room temperature                                          |
 | `current_outdoor_temperature`  | `float                   | None`                               | Outdoor temperature                                       |
 | `target_temperature`           | `float                   | None`                               | Target temperature                                        |
 | `regulated_target_temperature` | `float                   | None`                               | Regulated target temperature used to drive the underlying |
 | `last_temperature_slope`       | `float                   | None`                               | Latest temperature slope                                  |
 | `vtherm_hvac_mode`             | `str                     | None`                               | VTherm HVAC mode                                          |
+| `vtherm_hvac_modes`            | `Sequence[object]`       | Modes the thermostat currently accepts, excluding disabled modes |
 | `hvac_action`                  | `str                     | None`                               | HVAC action                                               |
 | `hvac_off_reason`              | `str                     | None`                               | HVAC off reason                                           |
 | `cycle_min`                    | `int`                    | Cycle length in minutes             |
@@ -375,21 +384,42 @@ Runtime view exposed to proportional algorithm handlers.
 | `is_overpowering_detected`     | `bool`                   | Whether power shedding is active    |
 | `underlying_fan_modes`         | `list[str]               | None`                               | Fan modes exposed by the underlying climate(s)            |
 
+`has_valve_regulation` is a runtime fact, not a configuration key: auto-start/stop
+managers use it to exclude valve-regulated thermostats. `vtherm_hvac_modes` is a
+separate fact for validating a candidate stop mode. Its elements can be
+core-specific HVAC mode objects; compare their string representations with the
+candidate, rather than assuming they are Home Assistant enums or strings.
+
+Managers keeping time-based state must read `thermostat.now`, never a local wall
+clock such as `datetime.now()`. Two refreshes in the same control cycle observe
+the same runtime clock value, so the second has no elapsed time and must not
+accumulate state again. A local clock does not provide this deduplication.
+
 #### Methods
 
 | Method                                    | Signature             | Description                                  |
 | ----------------------------------------- | --------------------- | -------------------------------------------- |
 | `async_set_underlying_fan_mode(fan_mode)` | `async (str) -> None` | Send a fan mode to the underlying climate(s) |
 | `async_underlying_entity_turn_off()`      | `async () -> None`    | Turn off the underlying entities             |
+| `async_request_state_refresh()`           | `async () -> None`    | Force immediate state recalculation and publication after a manager decision |
 | `async_control_heating(timestamp, force)` | `async (datetime      | None, bool) -> bool`                         | Trigger VTherm control |
 | `update_custom_attributes()`              | `() -> None`          | Refresh custom state attributes              |
 | `async_write_ha_state()`                  | `() -> None`          | Publish state to Home Assistant              |
 
+Await `thermostat.async_request_state_refresh()` on a manager state transition,
+not on every control cycle. The thermostat marks its requested state as changed,
+forces recalculation of its current state through the existing arbitration, and
+publishes the result before returning. It does not override an HVAC mode or
+expose the state manager. If the effective state is unchanged, the request
+completes harmlessly. If the thermostat is not ready, it logs and returns without
+raising or changing the published state; the plugin owns any retry policy.
+
 ### InterfaceTemperatureTimestampRuntime
 
 Optional, runtime-checkable extension of `InterfaceThermostatRuntime`, exported
-from `vtherm_api` and `vtherm_api.interfaces`. The base runtime protocol is unchanged;
-older runtimes and plugin test doubles can continue to implement it without timestamps.
+from `vtherm_api` and `vtherm_api.interfaces`. This extension adds no timestamp
+requirements to the base runtime protocol; runtimes and plugin test doubles can
+continue to implement the base protocol without timestamps.
 
 | Property | Type | Description |
 | --- | --- | --- |
